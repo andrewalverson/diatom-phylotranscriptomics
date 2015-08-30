@@ -4,16 +4,20 @@ use warnings;
 use strict;
 use Getopt::Long;
 
-our $SCRIPT_WALL   = 18;    # walltime for running 'rnaseq_clean_filter.pl'
-our $SCRIPT_QUEUE  = 'aja'; # queue for Trinity PBS script
-our $TRINITY_WALL  = 12;    # walltime for Trinity, which will be written to the Trinity PBS job script
-our $TRINITY_QUEUE = 'mem512GB64core'; # queue for Trinity PBS script
+my $SCRIPT_WALL   = 18;    # walltime for running 'rnaseq_clean_filter.pl'
+my $SCRIPT_QUEUE  = 'aja'; # queue for Trinity PBS script
+my $TRINITY_WALL  = 12;    # walltime for Trinity, which will be written to the Trinity PBS job script
+my $TRINITY_QUEUE = 'mem512GB64core'; # queue for Trinity PBS script
 my $MIN_KMER_RNA   = 1;     # for Trinity, min_kmer_cov parameter (rRNA assembly)
 my $MIN_KMER_ORG   = 1;     # for Trinity, min_kmer_cov parameter (organelle assembly)
 my $MIN_KMER_NUC   = 2;     # for Trinity, min_kmer_cov parameter (nuclear assembly)
-our $NORMALIZE;
+my $NORMALIZE;
 
 parseArgs();
+
+# get RNA ID
+my $rnaID = shift @ARGV;
+my $suffix = "";
 
 # of processors in queue
 my $ppn;
@@ -36,30 +40,26 @@ if( $NORMALIZE ){
   $NORMALIZE = "";
 }
 
-# get RNA ID
-my $rnaID = shift @ARGV;
-
-# if this is a re-sequenced RNA, separate numbers and letters
-my $suffix = "";
-if( $rnaID =~ /(\d+)([a-zA-Z])/ ){
-  $rnaID  = $1;
-  $suffix = $2;
+# determine whether this an Alverson lab RNA ID
+if( $rnaID =~ /(\d+)([a-zA-Z])?/ ){
+  $rnaID  = "R$1";
+  $2 and $suffix = $2;
 }
 
 # print "rnaID:  $rnaID\n";
 # print "suffix: $suffix\n";
 
-my $outfile = "run_rnaseq2clean_filter_R$rnaID$suffix.pbs";
+my $outfile = "run_rnaseq2clean_filter_$rnaID$suffix.pbs";
 
 open( PBS, '>', $outfile ) || die "Can't open $outfile: $!\n";
 
 # print PBS lines
-print PBS "#PBS -N rnaseq2clean_filter_R$rnaID$suffix\n";
+print PBS "#PBS -N rnaseq2clean_filter_$rnaID$suffix\n";
 print PBS "#PBS -q $SCRIPT_QUEUE\n";
 print PBS '#PBS -j oe', "\n";
 print PBS '#PBS -m abe', "\n";
 print PBS '#PBS -M aja@uark.edu ', "\n";
-print PBS "#PBS -o rnaseq2clean_filter_R$rnaID$suffix\." . '$PBS_JOBID' . "\n";
+print PBS "#PBS -o rnaseq2clean_filter_$rnaID$suffix\." . '$PBS_JOBID' . "\n";
 print PBS "#PBS -l nodes=1:ppn=$ppn\n";
 print PBS '#PBS -l walltime=' . $SCRIPT_WALL . ':00:00', "\n\n";
 print PBS 'cd $PBS_O_WORKDIR', "\n\n";

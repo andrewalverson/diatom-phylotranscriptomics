@@ -6,13 +6,15 @@ use Getopt::Long;
 use Benchmark;
 use DBI;
 use DBD::mysql;
-use Data::Dumper;
 
+#----------------------------------------------------------------------
 # set global variables
+#----------------------------------------------------------------------
 my $QUEUE     = 'mem512GB64core'; # job queue for Trinity PBS script
-my $HOST      = 'tgv';            # the SQL server on UARK RAZOR cluster
-my $DB        = 'transcriptome';  # SQL datbase
-my $TABLE     = 'RNA_Book';       # table within SQL database
+my $USE_SQL;                      # boolean: 1 = query the MySQL database for genus, species, etc.
+my $HOST      = 'tgv';            # the MySQL server on UARK RAZOR cluster
+my $DB        = 'transcriptome';  # MySQL datbase
+my $TABLE     = 'RNA_Book';       # table within MySQL database
 my $NORMALIZE;        # whether or not to perform kmer normalization of nuclear reads with bbnorm
 my $PBS_ONLY;         # skip analyses and just generate a Trinity job script
 my $WALLTIME   = 18;  # wall time for Trinity run
@@ -23,23 +25,6 @@ my $MIN_LEN    = 72;  # for Trimmomatic, remove reads shorter than this
 my $MIN_KMER_RNA = 1; # for Trinity, min_kmer_cov parameter (rRNA assembly)
 my $MIN_KMER_ORG = 1; # for Trinity, min_kmer_cov parameter (organelle assembly)
 my $MIN_KMER_NUC = 2; # for Trinity, min_kmer_cov parameter (nuclear assembly)
-
-# read command line options
-parseArgs();
-
-# get RNA ID
-my $rnaID  = shift @ARGV;
-my $suffix = "";
-
-# if this is a re-sequenced RNA, separate numbers and letters
-if( $rnaID =~ /(\d+)([a-zA-Z])/ ){
-  $rnaID  = $1;
-  $suffix = $2;
-}
-
-# establish file names for forward and reverse raw reads
-my $fwd_reads = "R$rnaID$suffix\_1.fq.gz";
-my $rev_reads = "R$rnaID$suffix\_2.fq.gz";
 
 #----------------------------------------------------------------------
 # set paths to directories, bowtie2 databases, and executables
@@ -56,57 +41,49 @@ my $hmmer3_executable   = '/share/apps/hmmer-3.0/src/hmmscan';
 my $pfam_db             = '/scratch/aja/pfam/Pfam-A.hmm';
 my $diatom_aa_db        = '/scratch/aja/diatom_protein_dbs/Phatr_Thaps_aa.fa';
 my $copy_output_to      = 'storage07:/data/data/rnaseq';
-my $clean_filter_PBS    = "run_rnaseq2clean_filter_R$rnaID$suffix\.pbs"; # PBS job script that runs this script
 my $trinity_PBS_script; # name of Trinity PBS script
 
-#----------------------------------------------------------------------
-# establish name of log file
-#----------------------------------------------------------------------
-my $logfile = "clean_filter_R$rnaID$suffix.log";
+
+# read command line options
+parseArgs();
+
+# get the RNA ID and declare related variables
+my $rnaID  = shift @ARGV;
+my $suffix = "";
+my( $logfile, $directory_id, $genus, $species, $cultureID, $fwd_reads, $rev_reads );
 
 
 #----------------------------------------------------------------------
-# for connecting to the MySQL server
+# parse the RNA ID
 #----------------------------------------------------------------------
-my $ds     = "DBI:mysql:$DB:$HOST";
-my $user   = 'aja';
-my $passwd = 'aja123';
+# determine whether this an Alverson lab RNA ID
+if( $rnaID =~ /(\d+)([a-zA-Z])?/ ){ # Alverson lab RNA ID
+  my $rnaNUM = $1;
+  $2 and $suffix = $2;
 
+  # extract metadata from MySQL server
+  ( $genus, $species, $cultureID, $logfile, $directory_id ) = sql_fetch( $rnaNUM, );
 
-#----------------------------------------------------------------------
-# connect to the MySQL server
-#----------------------------------------------------------------------
-my $dbh = DBI->connect( $ds, $user, $passwd, {
-	  AutoCommit => 0,
-	  RaiseError => 1,
-	  }) or die $DBI::errstr;
+  # establish file names for forward and reverse raw reads
+  $fwd_reads = "$rnaID$suffix\_1.fq.gz";
+  $rev_reads = "$rnaID$suffix\_2.fq.gz";
 
-my $sth;  # holds the SQL prepare statement
+}else{                              # generic/other RNA ID
+  # establish names for log file and output directory
+  $logfile = "clean_filter_$rnaID$suffix.log";
+  $directory_id = $rnaID;
 
-
-#----------------------------------------------------------------------
-# prepare and execute the SQL SELECT statement for this RNA_ID
-#----------------------------------------------------------------------
-$sth = $dbh->prepare( "SELECT * FROM $TABLE WHERE RNA_ID = $rnaID" );
-$sth->execute();
-
-# fetch the SQL entry for this RNA_ID into a hash
-my $hash = $sth->fetchrow_hashref();
-
-# finish the query
-$sth->finish;
-
-# print Dumper($hash); 
-# $dbh->disconnect;
-# exit;
+  # establish file names for forward and reverse raw reads
+  $fwd_reads = "$rnaID\_1.fq.gz";
+  $rev_reads = "$rnaID\_2.fq.gz";
+}
 
 
 #----------------------------------------------------------------------
-# build name for output directory and make it if it doesn't already exist
+# verify read files exist; make output directory if it doesn't already exist
 #----------------------------------------------------------------------
-# build directory name (e.g., 'gyrosigma_fasciola_ecr2aja-02_R19' )
-my $directory_id = lcfirst $hash->{Genus} . "_" . lcfirst $hash->{Species} . "_" .  $hash->{Culture_ID} . "_R" . $rnaID . $suffix;
-
+-e $fwd_reads or die "Expecting to find $fwd_reads, but it doesn't exist\n";
+-e $rev_reads or die "Expecting to find $rev_reads, but it doesn't exist\n";
 -d "$parent/$directory_id" or system( "mkdir $parent/$directory_id" );
 
 
@@ -129,8 +106,7 @@ if( $PBS_ONLY ){
   # write Trinity PBS job script to the output directory for this RNA ID
   system( "mv $trinity_PBS_script $parent/$directory_id/" );
 
-  # disconnect from the MySQL database and exit
-  $dbh->disconnect;
+  # exit the program
   exit;
 
 }else{
@@ -145,7 +121,7 @@ if( $PBS_ONLY ){
   open( LOGFILE, ">", $logfile  ) || die "Can't open $logfile: $!\n";
   print LOGFILE $timestamp, "\n\n";
   print LOGFILE $0, "\n\n";
-  print LOGFILE "$hash->{Genus} ", lc $hash->{Species}, ", RNA ID: $rnaID$suffix\n\n";
+  print LOGFILE "$genus ", lc $species, ", RNA ID: $rnaID$suffix\n\n";
   close LOGFILE;
 
 
@@ -253,14 +229,14 @@ if( $PBS_ONLY ){
   }
   
   # create shell script for deleting raw reads from /scratch/aja
-  my $rm_reads = "rm_R$rnaID$suffix\_raw_reads.sh";
+  my $rm_reads = "rm_$rnaID$suffix\_raw_reads.sh";
   open( RMR, ">", $rm_reads  ) || die "Can't open $rm_reads: $!\n";
   print RMR "rm $fwd_reads $rev_reads\n";
   close RMR;
   
   # create shell script to:
   # (1) remove processed read files (can recreate these), (2) rsync output to storage07, (3) delete output directory from scratch
-  my $rm_outdir = "rm_R$rnaID$suffix\_outdir.sh";
+  my $rm_outdir = "rm_$rnaID$suffix\_outdir.sh";
   open( RMD, ">", "$parent/$rm_outdir"  ) || die "Can't open $rm_outdir: $!\n";
   print RMD "rm $parent/$directory_id/*.fq.gz\n";
   print RMD "rsync -a $parent/$directory_id storage07:/data/data/rnaseq/\n";
@@ -273,15 +249,52 @@ if( $PBS_ONLY ){
 
 }
 
-#----------------------------------------------------------------------
-# disconnect from the database and exit
-#----------------------------------------------------------------------
-$dbh->disconnect;
 
+# exit the program
 exit;
 
 
 ############################################SUBROUTINES#############################################
+sub sql_fetch{
+
+  my $rnaNUM = shift;
+  
+  # for connecting to the MySQL server
+  my $ds     = "DBI:mysql:$DB:$HOST";
+  my $user   = 'aja';
+  my $passwd = 'aja123';
+  
+  # connect to the MySQL server
+  my $dbh = DBI->connect( $ds, $user, $passwd, {
+	  AutoCommit => 0,
+	  RaiseError => 1,
+	  }) or die $DBI::errstr;
+
+  my $sth;  # holds the SQL prepare statement
+
+  # prepare and execute the SQL SELECT statement for this RNA_ID
+  $sth = $dbh->prepare( "SELECT * FROM $TABLE WHERE RNA_ID = $rnaNUM" );
+  $sth->execute();
+  
+  # fetch the SQL entry for this RNA_ID into a hash
+  my $hash = $sth->fetchrow_hashref();
+  
+  # finish the query
+  $sth->finish;
+  
+  # build directory name (e.g., 'gyrosigma_fasciola_ecr2aja-02_R19' )
+  my $dir_id = lcfirst $hash->{Genus} . "_" . lcfirst $hash->{Species} . "_" .  $hash->{Culture_ID} . "_R" . $rnaNUM . $suffix;
+
+  # build name for log file name
+  my $logname = "clean_filter_$rnaID$suffix.log";
+
+  # disconnect from the MySQL database
+  $dbh->disconnect;
+
+  return( $hash->{Genus}, $hash->{Species}, $hash->{Culture_ID}, $logname, $dir_id );
+  
+}
+####################################################################################################
 sub run_Trimmomatic{
 
   # this subroutine uses Trimmomatic to trim reads and remove adapter sequences
@@ -297,10 +310,10 @@ sub run_Trimmomatic{
   # 4 - remove reads with avg Phred < 32 (Trimmomatic: AVGQUAL)
   # 5 - remove reads <= 72 bp in length (Trimmomatic: MINLEN)
 
-  my $fwd_out = "R$rnaID$suffix\_cleaned_1.fq.gz"; # (fwd)
-  my $rev_out = "R$rnaID$suffix\_cleaned_2.fq.gz"; # (rev)
+  my $fwd_out = "$rnaID$suffix\_cleaned_1.fq.gz"; # (fwd)
+  my $rev_out = "$rnaID$suffix\_cleaned_2.fq.gz"; # (rev)
 
-  my $trimmomatic_command = "java -jar /share/apps/trimmomatic/Trimmomatic-0.32/trimmomatic-0.32.jar PE -phred64 $fwd_in $rev_in $fwd_out junk_R$rnaID\_1.fq.gz $rev_out junk_R$rnaID\_2.fq.gz ILLUMINACLIP:$adapterDB:2:40:15 HEADCROP:$HEADCROP LEADING:$TRIM_PHRED TRAILING:$TRIM_PHRED AVGQUAL:$AVG_PHRED MINLEN:$MIN_LEN TOPHRED33 2>>$logfile";
+  my $trimmomatic_command = "java -jar /share/apps/trimmomatic/Trimmomatic-0.32/trimmomatic-0.32.jar PE -phred64 $fwd_in $rev_in $fwd_out junk_$rnaID\_1.fq.gz $rev_out junk_$rnaID\_2.fq.gz ILLUMINACLIP:$adapterDB:2:40:15 HEADCROP:$HEADCROP LEADING:$TRIM_PHRED TRAILING:$TRIM_PHRED AVGQUAL:$AVG_PHRED MINLEN:$MIN_LEN TOPHRED33 2>>$logfile";
 
 
   open( LOGFILE, ">>", $logfile  ) || die "Can't open $logfile: $!\n";
@@ -327,7 +340,7 @@ sub run_Trimmomatic{
   close LOGFILE;
   
   # remove unpaired output files - no need for these
-  system( "rm junk_R$rnaID\_1.fq.gz junk_R$rnaID\_2.fq.gz" );
+  system( "rm junk_$rnaID\_1.fq.gz junk_$rnaID\_2.fq.gz" );
   
   return( $fwd_out, $rev_out );
   
@@ -340,7 +353,7 @@ sub filter_univec{
   my ( $rnaID, $suffix, $logfile, $fwd_in, $rev_in, $bowtie2_executable, $bowtie2_db ) = @_;
 
   # establish base name for unmapped reads output
-  my $unmapped_basename = "R$rnaID$suffix\_noVec_%.fq.gz";
+  my $unmapped_basename = "$rnaID$suffix\_noVec_%.fq.gz";
   ( my $fwd_out = $unmapped_basename ) =~ s/%/1/;
   ( my $rev_out = $unmapped_basename ) =~ s/%/2/;
   
@@ -381,12 +394,12 @@ sub filter_rRNA{
   my ( $rnaID, $suffix, $logfile, $fwd_in, $rev_in, $bowtie2_executable, $bowtie2_db ) = @_;
 
   # establish base name for unmapped reads output
-  my $unmapped_basename = "R$rnaID$suffix\_noVec_noRRNA_%.fq.gz";
+  my $unmapped_basename = "$rnaID$suffix\_noVec_noRRNA_%.fq.gz";
   ( my $fwd_out = $unmapped_basename ) =~ s/%/1/;
   ( my $rev_out = $unmapped_basename ) =~ s/%/2/;
   
   # filename for mapped rRNA reads, output by Bowtie2
-  my $rrna_reads = "R$rnaID$suffix\_rrna_reads_%.fq.gz";
+  my $rrna_reads = "$rnaID$suffix\_rrna_reads_%.fq.gz";
   ( my $fwd_rrna = $rrna_reads ) =~ s/%/1/;
   ( my $rev_rrna = $rrna_reads ) =~ s/%/2/;
 
@@ -432,12 +445,12 @@ sub filter_organelle{
   my ( $rnaID, $suffix, $logfile, $fwd_in, $rev_in, $bowtie2_executable, $bowtie2_db ) = @_;
 
   # establish names for unmapped reads output
-  my $unmapped_basename = "R$rnaID$suffix\_cleaned_filtered_%.fq.gz";
+  my $unmapped_basename = "$rnaID$suffix\_cleaned_filtered_%.fq.gz";
   ( my $fwd_out = $unmapped_basename ) =~ s/%/1/;
   ( my $rev_out = $unmapped_basename ) =~ s/%/2/;
   
   # filename for mapped organelle reads, output by Bowtie2
-  my $organelle_reads = "R$rnaID$suffix\_organelle_reads_%.fq.gz";
+  my $organelle_reads = "$rnaID$suffix\_organelle_reads_%.fq.gz";
   ( my $fwd_organelle = $organelle_reads ) =~ s/%/1/;
   ( my $rev_organelle = $organelle_reads ) =~ s/%/2/;
 
@@ -587,7 +600,7 @@ sub writeTrinityPBS{
   
   my $ppn; # number processors
   my $mem; # available memory
-  my $outfile = "trinity_assemble_R$rnaID$suffix.pbs";
+  my $outfile = "trinity_assemble_$rnaID$suffix.pbs";
 
   # files names for the unzipped nuclear reads
   ( my $fwd_fq = $fwd_nuc_all ) =~ s/\.gz$//;
@@ -618,14 +631,14 @@ sub writeTrinityPBS{
   open( PBS, '>', $outfile ) || die "Can't open $outfile: $!\n";
   
   # print PBS job parameters
-  print PBS "#PBS -N assemble_R$rnaID$suffix\n";
+  print PBS "#PBS -N assemble_$rnaID$suffix\n";
   print PBS '#PBS -j oe', "\n";
   print PBS '#PBS -m abe', "\n";
   print PBS '#PBS -M aja@uark.edu', "\n";
   print PBS '#PBS -q ' . $QUEUE . "\n";
   print PBS '#PBS -l nodes=1:ppn='. $ppn . "\n";
   print PBS '#PBS -l walltime=' . $WALLTIME . ':00:00', "\n";
-  print PBS "#PBS -o trinity_assemble_R$rnaID$suffix\." . '$PBS_JOBID' . "\n\n";
+  print PBS "#PBS -o trinity_assemble_$rnaID$suffix\." . '$PBS_JOBID' . "\n\n";
   print PBS 'cd $PBS_O_WORKDIR', "\n\n";
 
   # load Trinity modules
@@ -640,12 +653,12 @@ sub writeTrinityPBS{
   # assemble rRNA reads
   print PBS "# assemble rRNA reads\n";
   print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-2, " --left $fwd_rna --right $rev_rna --full_cleanup\n";
-  print PBS "mv $trinity_assembly_file R$rnaID$suffix\_rrna.fa\n\n";
+  print PBS "mv $trinity_assembly_file $rnaID$suffix\_rrna.fa\n\n";
 
   # assemble organelle reads
   print PBS "# assemble organelle reads\n";
   print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_ORG --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-2, " --left $fwd_org --right $rev_org --full_cleanup\n";
-  print PBS "mv $trinity_assembly_file R$rnaID$suffix\_organelle.fa\n\n";
+  print PBS "mv $trinity_assembly_file $rnaID$suffix\_organelle.fa\n\n";
   
   # assemble nuclear reads
   print PBS "# assemble nuclear reads\n";
@@ -654,15 +667,15 @@ sub writeTrinityPBS{
   }else{
     print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-2, " --left $fwd_nuc_all --right $rev_nuc_all --full_cleanup\n";
   }
-  print PBS "mv $trinity_assembly_file R$rnaID$suffix\_nuclear.fa\n\n";
+  print PBS "mv $trinity_assembly_file $rnaID$suffix\_nuclear.fa\n\n";
   
   # print report for nuclear assembly
   print PBS "# print assembly report\n";
-  print PBS "$trinity_utils/TrinityStats.pl R$rnaID$suffix\_nuclear.fa > R$rnaID$suffix\_nuclear.stats\n\n";
+  print PBS "$trinity_utils/TrinityStats.pl $rnaID$suffix\_nuclear.fa > $rnaID$suffix\_nuclear.stats\n\n";
 
   # estimate transcript abundance with RSEM
   print PBS "# estimate nuclear transcript abundance with RSEM\n";
-  print PBS "$trinity_utils/align_and_estimate_abundance.pl --thread_count ", $ppn-2, " --transcripts R$rnaID$suffix\_nuclear.fa --seqType fq --left $fwd_fq --right $rev_fq --est_method RSEM --aln_method bowtie --trinity_mode --prep_reference\n\n";
+  print PBS "$trinity_utils/align_and_estimate_abundance.pl --thread_count ", $ppn-2, " --transcripts $rnaID$suffix\_nuclear.fa --seqType fq --left $fwd_fq --right $rev_fq --est_method RSEM --aln_method bowtie --trinity_mode --prep_reference\n\n";
   
   # BLAST and hmmer3 searches to diatom proteins and Pfam databases, respectively
   # NEED TO INCORPORATE GNU PARALLEL OR GRIDRUNNER
@@ -671,13 +684,13 @@ sub writeTrinityPBS{
   # print PBS "$hmmer3_executable --cpu 8 --domtblout pfam.domtblout $pfam_db transdecoder_dir/longest_orfs.pep\n";
   
   # use TransDecoder to translate nuclear reads
-  print PBS "# use TransDecoder to translate nuclear reads\n";
-  print PBS "TransDecoder.LongOrfs -t R$rnaID$suffix\_nuclear.fa\n\n";
-  print PBS "TransDecoder.Predict -t target_transcripts.fasta --retain_pfam_hits pfam.domtblout --retain_blastp_hits blastp.outfmt6\n\n";
+  #print PBS "# use TransDecoder to translate nuclear reads\n";
+  #print PBS "TransDecoder.LongOrfs -t $rnaID$suffix\_nuclear.fa\n\n";
+  #print PBS "TransDecoder.Predict -t target_transcripts.fasta --retain_pfam_hits pfam.domtblout --retain_blastp_hits blastp.outfmt6\n\n";
   
   # remove intermediate output files
   print PBS "# remove intermediate output files\n";
-  print PBS "rm -r *.fq *.readcount R$rnaID$suffix\_nuclear.fa.* RSEM.stat RSEM.isoforms.results.ok transdecoder.tmp.* bowtie.*\n";
+  print PBS "rm -r *.fq *.readcount $rnaID$suffix\_nuclear.fa.* RSEM.stat RSEM.isoforms.results.ok transdecoder.tmp.* bowtie.*\n";
 
   # rsync output from razor to storage07:/data/data/rnaseq
   # Reminder: $parent = '/scratch/aja/rnaseq';
@@ -709,7 +722,11 @@ sub writeTrinityPBS{
 ####################################################################################################
 sub parseArgs{
 
-  my $usage = "\nUsage: $0 RNA_ID (integer) [options]
+  my $usage = "\nUsage: $0 <ID> [options]
+
+   Required: (1) Alverson lab RNA ID (e.g. '12' or '12a'), *OR*
+             (2) base name for the read files (e.g. 'index-AGTTCC' for 'index-AGTTCC_1.fq.gz' and 'index-AGTTCC_2.fq.gz')
+
 
    General options
           --queue     - job queue ('mem256GB48core', 'mem512GB64core' [default], 'mem768GB32core', 'aja', 'random')
@@ -719,11 +736,13 @@ sub parseArgs{
           --normalize - perform kmer normalization of *nuclear* reads with BBNorm (default: false)
           --pbs_only  - generate a Trinity job script only, skipping Trimmomatic and Bowtie2 (default: false)
 
+
    Trimmomatic options
           --headcrop   - number of 5' bases to trim (default: 10)
           --trim_phred - bases below this minimum Phred quality will be trimmed from 5' and 3' ends (default: 5)
           --avg_phred  - filter reads if average quality is below this threshold (default: 32)
           --min_len    - filter reads shorter than this length threshold (default: 72)
+
 
    Trinity options
           --min_kmer_rna  - Trinity min_kmer_cov parameter for rRNA assembly (default: 1)
@@ -745,9 +764,9 @@ sub parseArgs{
 	 'avg_phred=s'  => \$AVG_PHRED,
 	 'min_len=s'    => \$MIN_LEN,
 
-	 'min_kmer_rna=i'        => \$MIN_KMER_RNA,
-	 'min_kmer_org=i'        => \$MIN_KMER_ORG,
-	 'min_kmer_nuc=i'        => \$MIN_KMER_NUC,
+	 'min_kmer_rna=i'  => \$MIN_KMER_RNA,
+	 'min_kmer_org=i'  => \$MIN_KMER_ORG,
+	 'min_kmer_nuc=i'  => \$MIN_KMER_NUC,
 				);
   
   $ARGV[0] or die $usage;
