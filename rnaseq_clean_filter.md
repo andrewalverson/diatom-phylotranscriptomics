@@ -1,7 +1,5 @@
 ###Cleaning, filtering, and assembling Illumina RNAseq data with ``rnaseq_clean_filter.pl``
 
-[TOC]
-
 ###Cleaning and filtering reads
 
 #### Notes and Prerequisites
