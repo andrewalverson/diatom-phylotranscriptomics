@@ -4,7 +4,7 @@
 
 #### Notes and Prerequisites
 - The script `rnaseq_clean_filter.pl` uses _Trimmomatic_ and _Bowtie2_ to trim reads, remove Illumina adapters, and filter out reads matching known sequencing vectors, diatom organelle genomes, and diatom rRNA sequences.
-- The script optionally uses _BBNorm_ to perform a kmer normalization of the nuclear reads and _BBMerge_ to merge overlapping prior to assembly.
+- The script optionally uses _BBNorm_ to perform a kmer normalization of the nuclear reads and _BBMerge_ to merge overlapping reads prior to assembly.
 - File names for raw reads **must** be formatted as, for example, `R8_1.fq.gz` (fwd) and `R8_2.fq.gz` (rev), where `R` stands for 'RNA' and `8` is the RNA ID from the lab's 'Sequencing Library Book' from the 'Lab Only' part of the [lab website](http://alversonlab.com/index.php)
 >Note: if an RNA is re-sequenced, the later read files are named as `R8a_1.fq.gz`, `R8b_1.fq.gz`, etc.
 - Make sure that the MySQL databases on *Razor* are up to date
