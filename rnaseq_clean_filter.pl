@@ -17,7 +17,6 @@ my $DB        = 'transcriptome';  # MySQL datbase
 my $TABLE     = 'RNA_Book';       # table within MySQL database
 my $PBS_ONLY;  # skip analyses and just generate a Trinity job script
 my $NORMALIZE; # whether or not to perform kmer normalization of nuclear reads with bbnorm
-
 my $WALLTIME      = 18;     # wall time for Trinity run
 my $SLIDINGWINDOW = '4:5';  # Trimmomatic SLIDINGWINDOW paramter
 my $TRIM_PHRED    =  2;     # Trimmomatic LEADING and TRAILING partameters - bases below this Phred score will be trimmed from 5' and 3' ends of reads
@@ -33,8 +32,10 @@ my $REFERENCE     = 'phaeo' # Transrate 'reference' parameter, whether to use Ph
 #----------------------------------------------------------------------
 my $parent                = '/scratch/aja/rnaseq';
 my $rcorrector_executable = '/share/apps/rcorrector/rcorrector.pl';
-my $transrate_executable  = '/share/apps/transrate/transrate-1.0.1-linux-x86_64/transrate';
 my $trinity_executable    = '/share/apps/trinity/trinityrnaseq-2.0.2/Trinity';
+my $transrate_executable  = '/share/apps/transrate/transrate-1.0.1-linux-x86_64/transrate';
+my $parallel_executable   = '/share/apps/parallel/bin/parallel';
+my $hmmer3_executable     = '/share/apps/hmmer-3.0/src/hmmscan';
 my $trinity_plugins       = '/share/apps/trinity/trinityrnaseq-2.0.2/trinity-plugins';
 my $trinity_utils         = '/share/apps/trinity/trinityrnaseq-2.0.2/util';
 my $bowtie2_executable    = '/share/apps/bowtie2/bowtie2-2.2.3/bowtie2';
@@ -42,6 +43,8 @@ my $bowtie_univec_db      = '/scratch/aja/bowtie_univec_database/UniVec_Core';
 my $bowtie_rrna_db        = '/scratch/aja/bowtie_rrna_database/diatom_rRNA';
 my $bowtie_organelle_db   = '/scratch/aja/bowtie_organelle_database/diatom_cp-mt';
 my $adapterDB             = "/scratch/aja/illumina_adapter_database/TruSeq_adapters.fa";
+my $swissprot_db          = '/scratch/aja/swissprot_db/uniprot_sprot.fasta';
+my $pfam_db               = '/storage/aja/pfam/Pfam-A.hmm';
 my $phaeoProteins         = "/scratch/aja/diatom_protein_dbs/";
 my $thapsProteins         = "/scratch/aja/diatom_protein_dbs/";
 my $copy_output_to        = 'storage07:/data/data/rnaseq';
@@ -687,12 +690,13 @@ sub writeTrinityPBS{
   print PBS "#PBS -o trinity_assemble_$rnaID$suffix\." . '$PBS_JOBID' . "\n\n";
   print PBS 'cd $PBS_O_WORKDIR', "\n\n";
 
-  # load Trinity modules
+  # load Trinity and BLAST modules
   print PBS "# load Trinity modules\n";
   print PBS 'module purge', "\n";
   print PBS 'module load bowtie', "\n";
   print PBS 'module load samtools/0.1.19', "\n";
   print PBS 'module load trinity/2.0.2', "\n";
+  print PBS 'module load blast/2.2.29+', "\n";
 
   # assemble rRNA reads
   print PBS "# assemble rRNA reads\n";
@@ -707,9 +711,11 @@ sub writeTrinityPBS{
   # assemble nuclear reads
   print PBS "# assemble nuclear reads\n";
   if( $NORMALIZE ){
-    print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-2, " --left $fwd_nuc_norm --right $rev_nuc_norm --full_cleanup\n";
+    print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-2, " --left $fwd_nuc_norm --right $rev_nuc_norm \
+               --full_cleanup\n";
   }else{
-    print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-2, " --left $fwd_nuc_all --right $rev_nuc_all --full_cleanup\n";
+    print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-2, " --left $fwd_nuc_all --right $rev_nuc_all \
+               --full_cleanup\n";
   }
   print PBS "mv $trinity_assembly_file $rnaID$suffix\_nuclear.fa\n\n";
   
@@ -719,17 +725,27 @@ sub writeTrinityPBS{
 
   # estimate transcript abundance with RSEM
   print PBS "# estimate nuclear transcript abundance with RSEM\n";
-  print PBS "$trinity_utils/align_and_estimate_abundance.pl --thread_count ", $ppn-2, " --transcripts $rnaID$suffix\_nuclear.fa --seqType fq --left $fwd_fq --right $rev_fq --est_method RSEM \
-             --aln_method bowtie --trinity_mode --prep_reference\n\n";
+  print PBS "$trinity_utils/align_and_estimate_abundance.pl --thread_count ", $ppn-2, " --transcripts $rnaID$suffix\_nuclear.fa --seqType fq --left $fwd_fq --right $rev_fq \ 
+             --est_method RSEM --aln_method bowtie --trinity_mode --prep_reference\n\n";
   
   # assess assembly quality with transrate
   print PBS "# assess assembly quality with transrate\n";
-  print PBS "$transrate_executable --assembly $rnaID$suffix\_nuclear.fa --left $fwd_nuc_all --right $rev_nuc_all --reference $REFERENCE --threads $ppn-2
+  print PBS "$transrate_executable --threads $ppn-2 --assembly $rnaID$suffix\_nuclear.fa --left $fwd_nuc_all --right $rev_nuc_all --reference $REFERENCE\n";
 
+  # use TransDecoder to translate nuclear contigs
+  print PBS "# use TransDecoder to translate nuclear contigs\n";
+  print PBS "# Step 1: Predict all long open reading frames\n";
+  print PBS "TransDecoder.LongOrfs -t $rnaID$suffix\_nuclear.fa\n\n";
 
+  print PBS "# Step 2: Homology searches to SwissProt and Pfam\n";
+  print PBS "# Step 2.1: Parallel BLAST search long ORFs from Step 1 to SwissProt db\n";
+  print PBS "cat longest_orfs.pep | $parallel_executable --N 100 --j ", $ppn-2, " --sshloginfile $PBS_NODEFILE --recstart '>' --pipe blastx -outfmt 6 -max_target_seqs 1 -evalue 1e-5 -db $swissprot_db -query - > uniref.blastp\n\n";
+  print PBS "# Step 2.2: HMMR search search long ORFs to Pfam database\n";
+  print PBS "$hmmer3_executable --cpu ", $ppn-2, " --domtblout pfam.domtblout $pfam_db longest_orfs.pep\n";
 
+  print PBS "# Step 3: Transdecoder to translate nuclear contigs using homology search information\n";
+  print PBS "TransDecoder.Predict -t $rnaID$suffix\_nuclear.fa --retain_pfam_hits pfam.domtblout --retain_blastp_hits uniref.blastp\n\n";
 
-\n\n";
 
   # remove intermediate output files
   print PBS "# remove intermediate output files\n";
