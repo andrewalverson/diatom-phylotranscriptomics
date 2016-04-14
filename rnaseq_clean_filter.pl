@@ -16,7 +16,6 @@ my $HOST      = 'hpceq';          # the MySQL server on UARK RAZOR cluster
 my $DB        = 'transcriptome';  # MySQL datbase
 my $TABLE     = 'RNA_Book';       # table within MySQL database
 my $PBS_ONLY;  # skip analyses and just generate a Trinity job script
-my $NORMALIZE; # whether or not to perform kmer normalization of nuclear reads with bbnorm
 my $WALLTIME      = 24;      # wall time for Trinity run
 my $SLIDINGWINDOW = '4:5';   # Trimmomatic SLIDINGWINDOW paramter
 my $TRIM_PHRED    =  2;      # Trimmomatic LEADING and TRAILING partameters - bases below this Phred score will be trimmed from 5' and 3' ends of reads
@@ -44,9 +43,9 @@ my $bowtie_organelle_db   = '/scratch/aja/bowtie_organelle_database/diatom_cp-mt
 my $blast_rrna_db         = '/scratch/aja/blast_ssu_rrna_database/diatom_ssu.fa';
 my $adapterDB             = "/scratch/aja/illumina_adapter_database/TruSeq_adapters.fa";
 my $swissprot_db          = '/scratch/aja/swissprot_db/uniprot_sprot.fasta';
-my $pfam_db               = '/storage/aja/pfam/Pfam-A.hmm';
-my $phaeoProteins         = "/scratch/aja/diatom_protein_dbs/phaeoAA.fasta";
-my $thapsProteins         = "/scratch/aja/diatom_protein_dbs/thapsAA.fasta";
+my $pfam_db               = '/scratch/aja/pfam_db/Pfam-A.hmm';
+my $phaeoProteins         = "/scratch/aja/diatom_protein_dbs/phaeoAA";
+my $thapsProteins         = "/scratch/aja/diatom_protein_dbs/thapsAA";
 my $copy_output_to        = 'storage07:/data/data/rnaseq';
 my $trinity_PBS_script; # name of Trinity PBS script
 
@@ -94,10 +93,8 @@ if( $rnaID =~ /(\d+)([a-zA-Z])?/ ){ # Alverson lab RNA ID
 
 
 #----------------------------------------------------------------------
-# verify read files exist; make output directory if it doesn't already exist
+# make output directory if it doesn't already exist
 #----------------------------------------------------------------------
--e $fwd_reads or die "Expecting to find $fwd_reads, but it doesn't exist ($!)\n";
--e $rev_reads or die "Expecting to find $rev_reads, but it doesn't exist ($!)\n";
 -d "$parent/$directory_id" or system( "mkdir $parent/$directory_id" );
 
 
@@ -108,14 +105,9 @@ if( $PBS_ONLY ){
   # accessing these subroutines only to get file names for rRNA, organelle, and nuclear reads
   my( $fwd_rrna, $rev_rrna ) = filter_rRNA( $rnaID, $suffix );
   my( $fwd_nuc, $rev_nuc, $fwd_organelle, $rev_organelle ) = filter_organelle( $rnaID, $suffix );
-  my( $fwd_nuc_norm, $rev_nuc_norm ) = normalize_with_BBNorm( $fwd_nuc, $rev_nuc, $logfile );
 
   # write Trinity PBS job script
-  if( $NORMALIZE ){
-    $trinity_PBS_script = writeTrinityPBS( $logfile, $fwd_nuc_norm, $rev_nuc_norm, $fwd_nuc, $rev_nuc, $fwd_rrna, $rev_rrna, $fwd_organelle, $rev_organelle, $rnaID, $suffix, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils );
-  }else{
-    $trinity_PBS_script = writeTrinityPBS( $logfile, $fwd_nuc, $rev_nuc, $fwd_rrna, $rev_rrna, $fwd_organelle, $rev_organelle, $rnaID, $suffix, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils );
-  }
+  $trinity_PBS_script = writeTrinityPBS( $logfile, $fwd_nuc, $rev_nuc, $fwd_rrna, $rev_rrna, $fwd_organelle, $rev_organelle, $rnaID, $suffix, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils );
   
   # write Trinity PBS job script to the output directory for this RNA ID
   system( "mv $trinity_PBS_script $parent/$directory_id/" );
@@ -148,7 +140,7 @@ if( $PBS_ONLY ){
   #----------------------------------------------------------------------
   # use Trimmomatic to remove adapters, trim reads, and remove low-quality read pairs
   #----------------------------------------------------------------------
-  my( $fwd_cleaned, $rev_cleaned ) = run_Trimmomatic( $rnaID, $suffix, $logfile, $fwd_corrected, $rev_corrected );
+  my( $fwd_trimmed, $rev_trimmed ) = run_Trimmomatic( $rnaID, $suffix, $logfile, $fwd_corrected, $rev_corrected );
 
   
   #----------------------------------------------------------------------
@@ -177,7 +169,7 @@ if( $PBS_ONLY ){
   #---------------------------------------------------------------------
   # run Bowtie2 to filter out vector contaminants
   #----------------------------------------------------------------------
-  my( $fwd_noVec, $rev_noVec ) = filter_univec( $rnaID, $suffix, $logfile, $fwd_cleaned, $rev_cleaned, $bowtie2_executable, $bowtie_univec_db );
+  my( $fwd_noVec, $rev_noVec ) = filter_univec( $rnaID, $suffix, $logfile, $fwd_trimmed, $rev_trimmed, $bowtie2_executable, $bowtie_univec_db );
 
 
   #----------------------------------------------------------------------
@@ -189,40 +181,26 @@ if( $PBS_ONLY ){
   #----------------------------------------------------------------------
   # run Bowtie2 to filter out organelle reads
   #----------------------------------------------------------------------
-  my( $fwd_cleaned_filtered, $rev_cleaned_filtered, $fwd_organelle, $rev_organelle ) = filter_organelle( $rnaID, $suffix, $logfile, $fwd_noVec_norRNA, $rev_noVec_norRNA, $bowtie2_executable, $bowtie_organelle_db );
+  my( $fwd_trimmed_filtered, $rev_trimmed_filtered, $fwd_organelle, $rev_organelle ) = filter_organelle( $rnaID, $suffix, $logfile, $fwd_noVec_norRNA, $rev_noVec_norRNA, $bowtie2_executable, $bowtie_organelle_db );
 
-
-  #----------------------------------------------------------------------
-  # if specified, use BBNorm to perform kmer normalization of nuclear reads
-  #----------------------------------------------------------------------
-  $NORMALIZE and my( $fwd_cleaned_filtered_normalized, $rev_cleaned_filtered_normalized ) = normalize_with_BBNorm( $fwd_cleaned_filtered, $rev_cleaned_filtered, $logfile );
-  
 
   #----------------------------------------------------------------------
   # use BBMerge to merge rRNA, organelle, and nuclear reads
   #----------------------------------------------------------------------
   # merge rRNA reads wth BBMerge
-  merge_reads_with_BBMerge( $fwd_rrna, $rev_rrna, $logfile, "rRNA" );
+  my( $fwd_rrna_merged, $rev_rrna_merged ) = merge_reads_with_BBMerge( $fwd_rrna, $rev_rrna, $logfile, "rrna" );
 
   # merge organelle reads wth BBMerge
-  merge_reads_with_BBMerge( $fwd_organelle, $rev_organelle, $logfile, "organelle" );
+  my( $fwd_organelle_merged, $rev_organelle_merged ) = merge_reads_with_BBMerge( $fwd_organelle, $rev_organelle, $logfile, "organelle" );
 
   # merge nuclear reads wth BBMerge
-  if( $NORMALIZE ){
-    my( $fwd_nuc_normalized_merged, $rev_nuc_normalized_merged ) = merge_reads_with_BBMerge( $fwd_cleaned_filtered_normalized, $rev_cleaned_filtered_normalized, $logfile, "nuclear" );
-  }else{
-    my( $fwd_nuc_merged, $rev_nuc_merged ) = merge_reads_with_BBMerge( $fwd_cleaned_filtered, $rev_cleaned_filtered, $logfile, "nuclear" );
-  }
+  my( $fwd_nuc_merged, $rev_nuc_merged ) = merge_reads_with_BBMerge( $fwd_trimmed_filtered, $rev_trimmed_filtered, $logfile, "nuclear" );
 
   
   #----------------------------------------------------------------------
   # generate Trinity PBS job script
   #----------------------------------------------------------------------
-  if( $NORMALIZE ){
-    $trinity_PBS_script = writeTrinityPBS( $logfile, $fwd_nuc_normalized_merged, $rev_nuc_normalized_merged, $fwd_cleaned_filtered, $rev_cleaned_filtered, $fwd_cleaned, $rev_cleaned, $fwd_rrna, $rev_rrna, $fwd_organelle, $rev_organelle, $rnaID, $suffix, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils );
-  }else{
-    $trinity_PBS_script = writeTrinityPBS( $logfile, $fwd_nuc_merged, $rev_nuc_merged, $fwd_cleaned_filtered, $rev_cleaned_filtered, $fwd_rrna, $rev_rrna, $fwd_organelle, $rev_organelle, $rnaID, $suffix, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils );
-  }
+  $trinity_PBS_script = writeTrinityPBS( $logfile, $fwd_nuc_merged, $rev_nuc_merged, $fwd_trimmed_filtered, $rev_trimmed_filtered, $fwd_rrna_merged, $rev_rrna_merged, $fwd_organelle_merged, $rev_organelle_merged, $rnaID, $suffix, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils );
 
 
   #----------------------------------------------------------------------
@@ -235,19 +213,14 @@ if( $PBS_ONLY ){
   
   # remove Rcorrector, Trimmomatic, and Bowtie2 UniVec output files - don't need these
   print LOGFILE "Deleting intermediate files:\n";
-  print LOGFILE "    $fwd_corrected\, $rev_corrected\, $fwd_cleaned\, $rev_cleaned\, $fwd_noVec\, $rev_noVec\, $fwd_noVec_norRNA\, $rev_noVec_norRNA\n\n";
-  system( "rm $fwd_corrected $rev_corrected $fwd_cleaned $rev_cleaned $fwd_noVec $rev_noVec $fwd_noVec_norRNA $rev_noVec_norRNA" );
+  print LOGFILE "    $fwd_corrected\, $rev_corrected\, $fwd_trimmed\, $rev_trimmed\, $fwd_noVec\, $rev_noVec\, $fwd_noVec_norRNA\, $rev_noVec_norRNA\, $fwd_rrna\, $rev_rrna\, $fwd_organelle\, $rev_organelle\n\n";
+  system( "rm $fwd_corrected $rev_corrected $fwd_trimmed $rev_trimmed $fwd_noVec $rev_noVec $fwd_noVec_norRNA $rev_noVec_norRNA $fwd_rrna $rev_rrna $fwd_organelle $rev_organelle" );
 
   # move files to output directory created for this species/RNA_ID
   print LOGFILE "Moving log file; Trinity PBS script; nuclear, organelle, and rRNA reads to:\n";
   print LOGFILE "    $parent/$directory_id/\n\n";
 
-  if( $NORMALIZE ){
-    system( "mv $logfile $trinity_PBS_script $fwd_nuc_normalized_merged $rev_nuc_normalized_merged $fwd_cleaned_filtered $rev_cleaned_filtered $fwd_rrna $rev_rrna $fwd_organelle $rev_organelle $parent/$directory_id/" );
-    system( "rm $fwd_cleaned_filtered_normalized $rev_cleaned_filtered_normalized" );
-  }else{
-    system( "mv $logfile $trinity_PBS_script $fwd_nuc_merged $rev_nuc_merged $fwd_cleaned_filtered $rev_cleaned_filtered $fwd_rrna $rev_rrna $fwd_organelle $rev_organelle $parent/$directory_id/" );
-  }
+  system( "mv $logfile $trinity_PBS_script $fwd_nuc_merged $rev_nuc_merged $fwd_trimmed_filtered $rev_trimmed_filtered $fwd_rrna_merged $rev_rrna_merged $fwd_organelle_merged $rev_organelle_merged $parent/$directory_id/" );
   
   # create shell script to:
   # (1) remove processed read files (can recreate these), (2) rsync output to storage07, (3) delete output directory from scratch
@@ -363,8 +336,8 @@ sub run_Trimmomatic{
   # 4 - remove reads with avg Phred < 32 (Trimmomatic: AVGQUAL; default = 32)
   # 5 - remove reads <= 72 bp in length  (Trimmomatic: MINLEN;  default = 72)
 
-  my $fwd_out = "$rnaID$suffix\_cleaned_1.fq.gz"; # (fwd)
-  my $rev_out = "$rnaID$suffix\_cleaned_2.fq.gz"; # (rev)
+  my $fwd_out = "$rnaID$suffix\_trimmed_1.fq.gz"; # (fwd)
+  my $rev_out = "$rnaID$suffix\_trimmed_2.fq.gz"; # (rev)
 
   my $trimmomatic_command = "java -jar /share/apps/trimmomatic/Trimmomatic-0.32/trimmomatic-0.32.jar PE -phred64 $fwd_in $rev_in $fwd_out junk_$rnaID\_1.fq.gz $rev_out junk_$rnaID\_2.fq.gz ILLUMINACLIP:$adapterDB:2:40:15 LEADING:$TRIM_PHRED TRAILING:$TRIM_PHRED MINLEN:$MIN_LEN TOPHRED33 2>>$logfile";
 
@@ -497,7 +470,7 @@ sub filter_organelle{
   my ( $rnaID, $suffix, $logfile, $fwd_in, $rev_in, $bowtie2_executable, $bowtie2_db ) = @_;
 
   # establish names for unmapped reads output
-  my $unmapped_basename = "$rnaID$suffix\_cleaned_filtered_%.fq.gz";
+  my $unmapped_basename = "$rnaID$suffix\_trimmed_filtered_%.fq.gz";
   ( my $fwd_out = $unmapped_basename ) =~ s/%/1/;
   ( my $rev_out = $unmapped_basename ) =~ s/%/2/;
   
@@ -564,10 +537,10 @@ sub merge_reads_with_BBMerge{
   system( $bbmerge );
 
   # concatenate and compress fwd unmerged and merged read files
-  system( "cat unmerged1.fq merged.fq | gzip > $fwd_in" );
+  system( "cat unmerged1.fq merged.fq | gzip > $type\_merged_fwd.fq.gz" );
 
   # rename rev unmerged reads
-  system( "mv unmerged2.fq.gz $rev_in" );
+  system( "mv unmerged2.fq.gz $type\_merged_rev.fq.gz" );
 
   # remove intermediate files
   system( "rm unmerged1.fq merged.fq" );
@@ -579,77 +552,20 @@ sub merge_reads_with_BBMerge{
   open( LOGFILE, ">>", $logfile  ) || die "Can't open $logfile: $!\n";
   print LOGFILE "\nBBMerge $type CPU: ", timestr( $difference ), "\n";
   print LOGFILE "File actions:\n";
-  print LOGFILE "     cat unmerged1.fq merged.fq | gzip > $fwd_in\n";
-  print LOGFILE "     mv unmerged2.fq.gz $rev_in\n";
+  print LOGFILE "     cat unmerged1.fq merged.fq | gzip > $type\_merged_fwd.fq.gz\n";
+  print LOGFILE "     mv unmerged2.fq.gz $type\_merged_rev.fq.gz\n";
   print LOGFILE "     rm unmerged1.fq merged.fq\n";
   print LOGFILE "END ", uc $type, " BBMERGE;\n\n\n\n";
   close LOGFILE;
 
-}
-####################################################################################################
-sub normalize_with_BBNorm{
-
-  # this subroutine runs BBNorm to perform kmer normalization of the reads
-
-  my ( $fwd_in, $rev_in, $logfile ) = @_;
-  my $version;
-  ( my $fwd_out = $fwd_in ) =~ s/_1/_normalized_1/;
-  ( my $rev_out = $rev_in ) =~ s/_2/_normalized_2/;
+  return( "$type\_merged_fwd.fq.gz", "$type\_merged_rev.fq.gz" );
   
-  if( $PBS_ONLY ){
-    return( $fwd_out, $rev_out );
-  }else{
-
-    # get BBNorm "version"
-    open( V, "bbnorm.sh | " );
-    while( <V> ){ 
-      chomp;
-      /Last modified/ and $version .= $_;
-    }
-    close V;
-
-    # BBNorm command
-    # my $bbnorm = "bbnorm.sh target=50 in=$fwd_in in2=$rev_in out=$fwd_out out2=$rev_out 2>>/dev/null";
-    my $bbnorm = "bbnorm.sh target=50 in=$fwd_in in2=$rev_in out=$fwd_out out2=$rev_out 2>>$logfile";
-    
-    # open log file for printing
-    open( LOGFILE, ">>", $logfile  ) || die "Can't open $logfile: $!\n";
-    print LOGFILE "# ----------------------------------------------------------------------\n";
-    print LOGFILE "# Normalizing nuclear reads with BBNorm (ver. \"$version\")\n";
-    print LOGFILE "# ----------------------------------------------------------------------\n\n";
-    print LOGFILE "BBNORM run with: \'$bbnorm\'\n\n";
-    print LOGFILE "BEGIN BBNORM;\n";
-    close LOGFILE;
-    
-    my $start_time = new Benchmark;
-    
-    system( $bbnorm );
-    
-    my $end_time   = new Benchmark;
-    my $difference = timediff( $end_time, $start_time );
-    
-    # re-open log file for printing
-    open( LOGFILE, ">>", $logfile  ) || die "Can't open $logfile: $!\n";
-    print LOGFILE "\nBBNorm CPU: ", timestr( $difference ), "\n";
-    print LOGFILE "Output files: $fwd_out, $rev_out\n";
-    print LOGFILE "END BBNORM;\n\n\n\n";
-    close LOGFILE;
-  }
-  
-  return( $fwd_out, $rev_out );
-
 }
 ####################################################################################################
 sub writeTrinityPBS{
 
-  my( $logfile, $fwd_nuc_norm, $rev_nuc_norm, $fwd_nuc_merged, $rev_nuc_merged, $fwd_nuc_all, $rev_nuc_all, $fwd_rna, $rev_rna, $fwd_org, $rev_org, $fwd_corrected_trimmed, $rev_corrected_trimmed, $rnaID, $suffix, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils );
+  my( $logfile, $fwd_nuc_merged, $rev_nuc_merged, $fwd_nuc_all, $rev_nuc_all, $fwd_rna, $rev_rna, $fwd_org, $rev_org, $rnaID, $suffix, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils ) = @_;
   
-  if( $NORMALIZE ){
-    ( $logfile, $fwd_nuc_norm, $rev_nuc_norm, $fwd_nuc_all, $rev_nuc_all, $fwd_corrected_trimmed, $rev_corrected_trimmed, $fwd_rna, $rev_rna, $fwd_org, $rev_org, $rnaID, $suffix, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils ) = @_;
-  }else{
-    ( $logfile, $fwd_nuc_merged, $rev_nuc_merged, $fwd_nuc_all, $rev_nuc_all, $fwd_rna, $rev_rna, $fwd_org, $rev_org, $fwd_corrected_trimmed, $rev_corrected_trimmed, $rnaID, $suffix, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils ) = @_;
-  }
-
   my $ppn; # number processors
   my $mem; # available memory
   my $outfile = "trinity_assemble_$rnaID$suffix.pbs";
@@ -700,7 +616,7 @@ sub writeTrinityPBS{
   print PBS 'module load bowtie', "\n";
   print PBS 'module load samtools/0.1.19', "\n";
   print PBS 'module load trinity/2.0.2', "\n";
-  print PBS 'module load blast/2.3.0+', "\n";
+  print PBS 'module load blast/2.2.29+', "\n";
   print PBS 'module load transdecoder/2.0.1', "\n";
   print PBS 'module load hmmer/3.1b2', "\n\n";
 
@@ -710,50 +626,46 @@ sub writeTrinityPBS{
 
   # assemble rRNA reads; BLAST rRNA assembly to diatom SSU database and record the top hit
   print PBS "# assemble rRNA reads\n";
-  print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-2, " --left $fwd_rna --right $rev_rna --full_cleanup\n";
+  print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-1, " --left $fwd_rna --right $rev_rna --full_cleanup\n";
   print PBS "mv $trinity_assembly_file $rnaID$suffix\_rrna.fa\n\n";
-  print PBS "blastn -query $rnaID$suffix\_rrna.fa -db $blast_rrna_db -outfmt 6 -max_target_seqs 1 -max_hsps 1 > $rnaID\_top_SSU_hit.blastn\n\n";
+  print PBS "blastn -query $rnaID$suffix\_rrna.fa -db $blast_rrna_db -max_hsps 1 > $rnaID\_top_SSU_hit.blastn\n\n";
 
   # assemble organelle reads
   print PBS "# assemble organelle reads\n";
-  print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_ORG --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-2, " --left $fwd_org --right $rev_org --full_cleanup\n";
+  print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_ORG --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-1, " --left $fwd_org --right $rev_org --full_cleanup\n";
   print PBS "mv $trinity_assembly_file $rnaID$suffix\_organelle.fa\n\n";
   
   # assemble nuclear reads
   print PBS "# assemble nuclear reads\n";
-  if( $NORMALIZE ){
-    print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-2, " --left $fwd_nuc_norm --right $rev_nuc_norm --full_cleanup\n";
-  }else{
-    print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-2, " --left $fwd_nuc_all --right $rev_nuc_all --full_cleanup\n";
-  }
+  print PBS "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem-6, 'G ', '--CPU ', $ppn-1, " --left $fwd_nuc_merged --right $rev_nuc_merged --full_cleanup\n";
 
   # fix bug in Trinity contig names that causes Transrate to fail
   print PBS "sed 's/\|/_/' $trinity_assembly_file > $rnaID$suffix\_nuclear.fa\n\n";
 
-  # print PBS "mv $trinity_assembly_file $rnaID$suffix\_nuclear.fa\n\n";
-  
   # print report for nuclear assembly
   print PBS "# print assembly report\n";
   print PBS "$trinity_utils/TrinityStats.pl $rnaID$suffix\_nuclear.fa > $rnaID$suffix\_nuclear.stats\n\n";
 
   # estimate transcript abundance with RSEM
   print PBS "# estimate nuclear transcript abundance with RSEM\n";
-  print PBS "$trinity_utils/align_and_estimate_abundance.pl --thread_count ", $ppn-2, " --transcripts $rnaID$suffix\_nuclear.fa --seqType fq --left $fwd_fq --right $rev_fq --est_method RSEM --aln_method bowtie --trinity_mode --prep_reference\n\n";
+  print PBS "$trinity_utils/align_and_estimate_abundance.pl --thread_count ", $ppn-1, " --transcripts $rnaID$suffix\_nuclear.fa --seqType fq --left $fwd_nuc_all --right $rev_nuc_all --est_method RSEM --aln_method bowtie --trinity_mode --prep_reference\n\n";
   
   # assess assembly quality with transrate
   print PBS "# assess assembly quality with transrate\n";
-  print PBS "$transrate_executable --threads ", $ppn-2, " --assembly $rnaID$suffix\_nuclear.fa --left $fwd_corrected_trimmed --right $rev_corrected_trimmed --reference $REFERENCE\n\n";
+  print PBS "$transrate_executable --threads ", $ppn-1, " --assembly $rnaID$suffix\_nuclear.fa --left $fwd_nuc_all --right $rev_nuc_all --reference $REFERENCE\n\n";
 
   # use TransDecoder to translate nuclear contigs
   print PBS "# TransDecoder to translate nuclear contigs\n";
   print PBS "# TransDecoder step 1: Predict all long open reading frames\n";
   print PBS "TransDecoder.LongOrfs -t $rnaID$suffix\_nuclear.fa\n\n";
+  
+  my $long_orfs = "$rnaID$suffix\_nuclear.fa\.transdecoder_dir/longest_orfs.pep";
 
   print PBS "# TransDecoder step 2: Homology searches to SwissProt and Pfam\n";
   print PBS "# TransDecoder step 2.1: Parallel BLAST search long ORFs from Step 1 to SwissProt db\n";
-  print PBS "cat longest_orfs.pep | $parallel_executable --N 100 --j ", $ppn-2, " --sshloginfile $rnaID\_nodes --recstart > --pipe blastx -outfmt 6 -max_target_seqs 1 -evalue 1e-5 -db $swissprot_db -query - > uniref.blastp\n\n";
+  print PBS "cat $long_orfs | $parallel_executable --N 100 --j ", $ppn-1, " --sshloginfile $rnaID\_nodes --recstart \'>\' --pipe /share/apps/blast/ncbi-blast-2.2.29+/bin/blastp -outfmt 6 -max_target_seqs 1 -evalue 1e-5 -db $swissprot_db -query - > uniref.blastp\n\n";
   print PBS "# TransDecoder step 2.2: HMMR search search long ORFs to Pfam database\n";
-  print PBS "hmmscan --cpu ", $ppn-2, " --domtblout pfam.domtblout $pfam_db longest_orfs.pep\n\n";
+  print PBS "hmmscan --cpu ", $ppn-1, " --domtblout pfam.domtblout $pfam_db $long_orfs\n\n";
 
   print PBS "# TransDecoder step 3: Use Transdecoder to translate nuclear contigs using homology search information\n";
   print PBS "TransDecoder.Predict -t $rnaID$suffix\_nuclear.fa --retain_pfam_hits pfam.domtblout --retain_blastp_hits uniref.blastp\n\n";
@@ -761,7 +673,7 @@ sub writeTrinityPBS{
 
   # remove intermediate output files
   print PBS "# remove intermediate output files\n";
-  print PBS "rm -r *.fq *.readcount $rnaID$suffix\_nuclear.fa.* RSEM.stat RSEM.isoforms.results.ok bowtie.*\n";
+  print PBS "rm -r *.fq *.readcount $rnaID$suffix\_nuclear.fa.* RSEM.stat RSEM.isoforms.results.ok bowtie.* $trinity_assembly_file\n";
 
   # rsync output from razor to storage07:/data/data/rnaseq
   # Reminder: $parent = '/scratch/aja/rnaseq';
@@ -804,7 +716,6 @@ sub parseArgs{
           --db        - MySQL database (default: 'transcriptome')
           --table     - MySQL table to read (default: 'RNA_Book')
           --walltime  - walltime for Trinity run (integer [hrs], default: 24)
-          --normalize - perform kmer normalization of *nuclear* reads with BBNorm (default: false)
           --pbs_only  - generate a Trinity job script only, skipping Trimmomatic and Bowtie2 (default: false)
 
 
@@ -832,7 +743,6 @@ sub parseArgs{
 	 'db=s'         => \$DB,
 	 'table=s'      => \$TABLE,
 	 'walltime=s'   => \$WALLTIME,
-	 'normalize!'   => \$NORMALIZE,
 	 'pbs_only'     => \$PBS_ONLY,
 
 	 'window=s'     => \$SLIDINGWINDOW,
