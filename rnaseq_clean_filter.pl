@@ -107,7 +107,7 @@ if( $PBS_ONLY ){
   my( $fwd_nuc, $rev_nuc, $fwd_organelle, $rev_organelle ) = filter_organelle( $rnaID, $suffix );
 
   # write Trinity PBS job script
-  $trinity_PBS_script = writeTrinityPBS( $logfile, $fwd_nuc, $rev_nuc, $fwd_rrna, $rev_rrna, $fwd_organelle, $rev_organelle, $rnaID, $suffix, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils );
+  $trinity_PBS_script = writeTrinityPBS( $logfile, $fwd_nuc, $rev_nuc, $fwd_nuc, $rev_nuc, $fwd_rrna, $rev_rrna, $fwd_organelle, $rev_organelle, $rnaID, $suffix, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils );
   
   # write Trinity PBS job script to the output directory for this RNA ID
   system( "mv $trinity_PBS_script $parent/$directory_id/" );
@@ -201,7 +201,7 @@ if( $PBS_ONLY ){
   # generate Trinity PBS job script
   #----------------------------------------------------------------------
   $trinity_PBS_script = writeTrinityPBS( $logfile, $fwd_nuc_merged, $rev_nuc_merged, $fwd_trimmed_filtered, $rev_trimmed_filtered, $fwd_rrna_merged, $rev_rrna_merged, $fwd_organelle_merged, $rev_organelle_merged, $rnaID, $suffix, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils );
-
+  
 
   #----------------------------------------------------------------------
   # move or delete output files
@@ -673,7 +673,7 @@ sub writeTrinityPBS{
 
   # remove intermediate output files
   print PBS "# remove intermediate output files\n";
-  print PBS "rm -r *.fq *.readcount $rnaID$suffix\_nuclear.fa.* RSEM.stat RSEM.isoforms.results.ok bowtie.* $trinity_assembly_file\n";
+  print PBS "rm -r $rnaID$suffix\_nuclear.fa\.transdecoder_dir/ *.fq *.readcount $rnaID$suffix\_nuclear.fa.* RSEM.stat RSEM.isoforms.results.ok bowtie.* $trinity_assembly_file\n";
 
   # rsync output from razor to storage07:/data/data/rnaseq
   # Reminder: $parent = '/scratch/aja/rnaseq';
