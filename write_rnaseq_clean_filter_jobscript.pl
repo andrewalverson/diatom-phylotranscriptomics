@@ -11,10 +11,12 @@ my $SCRIPT_QUEUE  = 'aja'; # queue for Trinity PBS script
 # settings for writing Trinity job script within 'rnaseq_clean_filter.pl'
 my $TRINITY_QUEUE  = 'mem512GB64core'; # queue for Trinity PBS script
 my $TRINITY_WALL   = 120; # walltime for Trinity, which will be written to the Trinity PBS job script
-my $MIN_KMER_RNA   = 1;   # for Trinity, min_kmer_cov parameter (rRNA assembly)
-my $MIN_KMER_ORG   = 1;   # for Trinity, min_kmer_cov parameter (organelle assembly)
-my $MIN_KMER_NUC   = 1;   # for Trinity, min_kmer_cov parameter (nuclear assembly)
-my $REFERENCE      = 'phaeo'; # Transrate 'reference' parameter, whether to use Phaeo or Thaps as the reference proteome
+my $MIN_KMER_RNA   = 1;   # for Trinity, --min_kmer_cov parameter (rRNA assembly)
+my $MIN_KMER_ORG   = 1;   # for Trinity, --min_kmer_cov parameter (organelle assembly)
+my $MIN_KMER_NUC   = 1;   # for Trinity, --min_kmer_cov parameter (nuclear assembly)
+my $STRANDED;             # Trinity, --SS_lib_type parameter to specify a stranded library
+my $NORMALIZE;            # Trinity, --no_normalize_reads parameter (Trinity normalizes reads by default after 21 Sept 2016)
+my $REFERENCE      = 'phaeo';  # Transrate 'reference' parameter, whether to use Phaeo or Thaps as the reference proteome
 
 # settings for running Trimmomatic within 'rnaseq_clean_filter.pl'
 my $SLIDINGWINDOW = '4:2'; # Trimmomatic SLIDINGWINDOW paramter - number of 5' bp to trim
@@ -57,6 +59,20 @@ if( $ID =~ /\A([RL])(\d+)([a-zA-Z])?/i ){
 
 my $outfile = "$type$ID$suffix\_rnaseq2clean_filter.pbs";
 
+# parse stranded option
+if( $STRANDED ){
+  $STRANDED = '--stranded';
+}else{
+  $STRANDED = '';
+}
+
+# parse normalize option
+if( $NORMALIZE ){
+  $NORMALIZE = '--normalize ';
+}else{
+  $NORMALIZE = '';
+}
+
 open( PBS, '>', $outfile ) || die "Can't open $outfile: $!\n";
 
 # print PBS lines
@@ -76,7 +92,7 @@ print PBS 'module load samtools/0.1.19', "\n";
 print PBS "module load bbmap\n\n";
 
 print PBS "/home/aja/local/src/scripts/rnaseq/rnaseq_clean_filter.pl $type$ID$suffix --wall=$TRINITY_WALL --trinity_queue=$TRINITY_QUEUE ", '\\', "\n",
-          "          --min_kmer_rna=$MIN_KMER_RNA --min_kmer_org=$MIN_KMER_ORG --min_kmer_nuc=$MIN_KMER_NUC  ", '\\', "\n",
+          "          --min_kmer_rna=$MIN_KMER_RNA --min_kmer_org=$MIN_KMER_ORG --min_kmer_nuc=$MIN_KMER_NUC $STRANDED $NORMALIZE", ' \\', "\n",
           "          --window=$SLIDINGWINDOW --min_len=$MIN_LEN --reference=$REFERENCE --phred_out=$PHRED_OUT\n";
 
 close PBS;
@@ -102,9 +118,11 @@ sub parseArgs{
    options for writing Trinity PBS job script within 'rnaseq_clean_filter.pl' pipeline
           --trinity_wall  - walltime for Trinity PBS script (integer, default = 120 hrs)
           --trinity_queue - queue for Trinity PBS script ('mem256GB48core', 'mem512GB64core' [default], 'mem768GB32core', 'random')
-          --min_kmer_rna   - Trinity min_kmer_cov parameter for rRNA assembly (default: 1)
-          --min_kmer_org   - Trinity min_kmer_cov parameter for organelle assembly (default: 1)
-          --min_kmer_nuc   - Trinity min_kmer_cov parameter for nuclear assembly (default: 1)
+          --min_kmer_rna   - Trinity --min_kmer_cov parameter for rRNA assembly (default: 1)
+          --min_kmer_org   - Trinity --min_kmer_cov parameter for organelle assembly (default: 1)
+          --min_kmer_nuc   - Trinity --min_kmer_cov parameter for nuclear assembly (default: 1)
+          --stranded       - Trinity --SS_lib_type parameter, set to RF when true (default: false [not stranded])
+          --normalize      - Trinity --no_normalize_reads parameter, Trinity normalizes by default (boolean, default: do not normalize)
 
 
    Transrate options
@@ -128,6 +146,8 @@ sub parseArgs{
 	 'min_kmer_rna=i'  => \$MIN_KMER_RNA,
 	 'min_kmer_org=i'  => \$MIN_KMER_ORG,
 	 'min_kmer_nuc=i'  => \$MIN_KMER_NUC,
+	 'stranded!'       => \$STRANDED,
+	 'normalize!'      => \$NORMALIZE,
 
 	 'reference=s'     => \$REFERENCE,
 
