@@ -5,7 +5,6 @@ use warnings;
 use Getopt::Long;
 use Benchmark;
 use DBI;
-use DBD::mysql;
 
 #----------------------------------------------------------------------
 # set global variables
@@ -20,6 +19,7 @@ my $WALLTIME      = 72;      # wall time for Trinity run
 my $SLIDINGWINDOW = '4:2';   # Trimmomatic SLIDINGWINDOW paramter (window-size:avg-quality)
 my $TRIM_PHRED    =  2;      # Trimmomatic LEADING and TRAILING partameters - bases below this Phred score will be trimmed from 5' and 3' ends of reads
 my $MIN_LEN       = 30;      # Trimmomatic MINLEN parameter - remove reads shorter than this
+my $AVG_QUAL      = 26;      # Trimmomatic AVGQUAL parameter - drop the read if the average quality is below the specified level
 my $PHRED_OUT     = 64;      # Trimmomatic TOPHRED33 or TOPHRED64 base quality coding of the output sequences
 my $STRANDED;                # Trinity, SS_lib_type parameter to specify a stranded library
 my $NORMALIZE     =  1;      # Trinity, --no_normalize_reads parameter (Trinity normalizes reads by default after 21 Sept 2016)
@@ -34,17 +34,18 @@ my $REFERENCE     = 'phaeo'; # Transrate 'reference' parameter, whether to use P
 #----------------------------------------------------------------------
 my $parent                = '/scratch/aja/rnaseq';
 my $rcorrector_executable = '/share/apps/bioinformatics/Rcorrector/run_rcorrector.pl';
-my $trinity_executable    = '/share/apps/trinity/trinityrnaseq-2.2.0/Trinity';
-my $trinity_plugins       = '/share/apps/trinity/trinityrnaseq-2.2.0/trinity-plugins';
-my $trinity_utils         = '/share/apps/trinity/trinityrnaseq-2.2.0/util';
+my $trinity_executable    = '/share/apps/trinity/trinityrnaseq-2.3.2/Trinity';
+my $trinity_plugins       = '/share/apps/trinity/trinityrnaseq-2.3.2/trinity-plugins';
+my $trinity_utils         = '/share/apps/trinity/trinityrnaseq-2.3.2/util';
 my $transrate_executable  = '/share/apps/transrate/transrate-1.0.1-linux-x86_64/transrate';
 my $parallel_executable   = '/share/apps/parallel/20150822/bin/parallel';
 my $bowtie2_executable    = '/share/apps/bowtie2/bowtie2-2.2.3/bowtie2';
 my $busco_executable      = '/share/apps/bioinformatics/BUSCO_v1.2/BUSCO_v1.2.py';
 my $cdhit_executable      = '/share/apps/bioinformatics/cdhit/v4.6.5/cd-hit';
 my $bowtie_univec_db      = '/storage/aja/bowtie_univec_database/UniVec_Core';
-my $bowtie_lsu_db        = '/storage/aja/bowtie_lsu_database/diatom_lsu';
-my $bowtie_ssu_db        = '/storage/aja/bowtie_ssu_database/diatom_ssu';
+my $bowtie_lsu_db         = '/storage/aja/bowtie_lsu_database/diatom_lsu';
+my $bowtie_ssu_db         = '/storage/aja/bowtie_ssu_database/diatom_ssu';
+my $bowtie_TOL_ssu_db     = '/storage/aja/bowtie_ssu_tree_of_life/ssu_tree_of_life';
 my $bowtie_organelle_db   = '/storage/aja/bowtie_organelle_database/diatom_cp-mt';
 my $blast_rrna_db         = '/storage/aja/blast_ssu_rrna_database/diatom_ssu.fa';
 my $adapterDB             = "/storage/aja/illumina_adapter_database/TruSeq_adapters.fa";
@@ -87,7 +88,7 @@ if( $ID =~ /\A([LR])(\d+)([a-zA-Z])?/ ){ # Alverson lab RNA or Library ID
   # remove '?' characters from genus and species names
   $genus   =~ s/\?//g;
   $species =~ s/\?//g;
- 
+  
   # establish file names for forward and reverse raw reads
   $fwd_reads = "$ID\_1.fq.gz";
   $rev_reads = "$ID\_2.fq.gz";
@@ -115,16 +116,17 @@ if( $ID =~ /\A([LR])(\d+)([a-zA-Z])?/ ){ # Alverson lab RNA or Library ID
 if( $PBS_ONLY ){
 
   # accessing these subroutines only to get file names for rRNA, organelle, and nuclear reads
-  my( $fwd_ssu, $rev_ssu )                                 = filter_rRNA( $ID, "ssu" );
+  my( $fwd_diatom_ssu, $rev_diatom_ssu )                   = filter_rRNA( $ID, "ssu" );
+  my( $fwd_tol_ssu, $rev_tol_ssu )                         = filter_rRNA( $ID, "tol_ssu" );
   my( $fwd_lsu, $rev_lsu )                                 = filter_rRNA( $ID, "lsu" );
   my( $fwd_nuc, $rev_nuc, $fwd_organelle, $rev_organelle ) = filter_organelle( $ID );
-  my( $fwd_ssu_merged, $rev_ssu_merged )                   = merge_reads_with_BBMerge( $ID, $fwd_ssu, $rev_ssu, $logfile, "ssu" );
-  my( $fwd_lsu_merged, $rev_lsu_merged )                   = merge_reads_with_BBMerge( $ID, $fwd_lsu, $rev_lsu, $logfile, "lsu" );
-  my( $fwd_organelle_merged, $rev_organelle_merged )       = merge_reads_with_BBMerge( $ID, $fwd_organelle, $rev_organelle, $logfile, "organelle" );
   my( $fwd_nuc_merged, $rev_nuc_merged )                   = merge_reads_with_BBMerge( $ID, $fwd_nuc, $rev_nuc, $logfile, "nuclear" );
+  # my( $fwd_ssu_merged, $rev_ssu_merged )                   = merge_reads_with_BBMerge( $ID, $fwd_diatom_ssu, $rev_diatom_ssu, $logfile, "ssu" );
+  # my( $fwd_lsu_merged, $rev_lsu_merged )                   = merge_reads_with_BBMerge( $ID, $fwd_diatom_lsu, $rev_diatom_lsu, $logfile, "lsu" );
+  # my( $fwd_organelle_merged, $rev_organelle_merged )       = merge_reads_with_BBMerge( $ID, $fwd_organelle, $rev_organelle, $logfile, "organelle" );
 
   # write Trinity PBS job script
-  ($trinity_PBS_script, $transdecoder_PBS_script) = writeTrinity_Transdecoder_PBS( $logfile, $fwd_nuc_merged, $rev_nuc_merged, $fwd_nuc, $rev_nuc, $fwd_ssu_merged, $rev_ssu_merged, $fwd_lsu_merged, $rev_lsu_merged, $fwd_organelle_merged, $rev_organelle_merged, $ID, $genus, $species, $cultureID, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils, $busco_executable, $cdhit_executable );
+  ($trinity_PBS_script, $transdecoder_PBS_script) = writeTrinity_Transdecoder_PBS( $logfile, $fwd_nuc_merged, $rev_nuc_merged, $fwd_nuc, $rev_nuc, $fwd_diatom_ssu, $rev_diatom_ssu, $fwd_tol_ssu, $rev_tol_ssu, $fwd_lsu, $rev_lsu, $fwd_organelle, $rev_organelle, $ID, $genus, $species, $cultureID, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils, $busco_executable, $cdhit_executable );
 
   # exit the program
   exit;
@@ -142,7 +144,9 @@ if( $PBS_ONLY ){
   print LOGFILE $timestamp, "\n\n";
   print LOGFILE $0, "\n\n";
   if( $genus ){
-    print LOGFILE "$genus ", lc $species, ", Sample ID: $ID\n\n";
+    print LOGFILE "$genus ";
+    $species =~ /\S+/ and print lc $species;
+    print " Sample ID: $ID\n\n";
   }else{
     print LOGFILE "Sample ID: $ID\n\n";
   }
@@ -193,9 +197,17 @@ if( $PBS_ONLY ){
   #----------------------------------------------------------------------
   # run Bowtie2 to filter out SSU and LSU rRNA sequences
   #----------------------------------------------------------------------
-  my( $fwd_noVec_noSSU, $rev_noVec_noSSU, $fwd_ssu, $rev_ssu ) = filter_rRNA( $ID, "ssu", $logfile, $fwd_noVec, $rev_noVec, $bowtie2_executable, $bowtie_ssu_db );
-  my( $fwd_noVec_noRNA, $rev_noVec_noRNA, $fwd_lsu, $rev_lsu ) = filter_rRNA( $ID, "lsu", $logfile, $fwd_noVec_noSSU, $rev_noVec_noSSU, $bowtie2_executable, $bowtie_lsu_db );
+  # filter diatom SSU rRNA reads - no need to keep unmapped reads, will make an unmapped SSU reads file based on mapping to the TOL SSU db
+  my( $fwd_diatom_ssu, $rev_diatom_ssu ) = filter_rRNA( $ID, "diatom_ssu", $logfile, $fwd_noVec, $rev_noVec, $bowtie2_executable, $bowtie_ssu_db );
 
+  # filter all (TOL) SSU rRNA reads - unmapped read files should be devoid of *ALL* SSU reads (diatoms + everything else)
+  my( $fwd_tol_ssu, $rev_tol_ssu, $fwd_noVec_noSSU, $rev_noVec_noSSU ) = filter_rRNA( $ID, "tol_ssu", $logfile, $fwd_noVec, $rev_noVec, $bowtie2_executable, $bowtie_TOL_ssu_db );
+
+  # filter diatom LSU rRNA reads - unmapped read files should be devoid of all rRNA reads (SSU + most LSU)
+  my( $fwd_lsu, $rev_lsu, $fwd_noVec_noRNA, $rev_noVec_noRNA ) = filter_rRNA( $ID, "lsu", $logfile, $fwd_noVec_noSSU, $rev_noVec_noSSU, $bowtie2_executable, $bowtie_lsu_db );
+
+  # my( $fwd_noVec_noSSU, $rev_noVec_noSSU, $fwd_ssu, $rev_ssu ) = filter_rRNA( $ID, "ssu", $logfile, $fwd_noVec, $rev_noVec, $bowtie2_executable, $bowtie_ssu_db );
+  # my( $fwd_noVec_noRNA, $rev_noVec_noRNA, $fwd_lsu, $rev_lsu ) = filter_rRNA( $ID, "lsu", $logfile, $fwd_noVec_noSSU, $rev_noVec_noSSU, $bowtie2_executable, $bowtie_lsu_db );
   
   #----------------------------------------------------------------------
   # run Bowtie2 to filter out organelle reads
@@ -204,17 +216,8 @@ if( $PBS_ONLY ){
 
 
   #----------------------------------------------------------------------
-  # use BBMerge to merge rRNA, organelle, and nuclear reads
+  # use BBMerge to merge nuclear reads
   #----------------------------------------------------------------------
-  # merge SSU reads wth BBMerge
-  my( $fwd_ssu_merged, $rev_ssu_merged ) = merge_reads_with_BBMerge( $ID, $fwd_ssu, $rev_ssu, $logfile, "ssu" );
-
-  # merge LSU reads wth BBMerge
-  my( $fwd_lsu_merged, $rev_lsu_merged ) = merge_reads_with_BBMerge( $ID, $fwd_lsu, $rev_lsu, $logfile, "lsu" );
-
-  # merge organelle reads wth BBMerge
-  my( $fwd_organelle_merged, $rev_organelle_merged ) = merge_reads_with_BBMerge( $ID, $fwd_organelle, $rev_organelle, $logfile, "organelle" );
-
   # merge nuclear reads wth BBMerge
   my( $fwd_nuc_merged, $rev_nuc_merged ) = merge_reads_with_BBMerge( $ID, $fwd_trimmed_filtered, $rev_trimmed_filtered, $logfile, "nuclear" );
 
@@ -222,7 +225,7 @@ if( $PBS_ONLY ){
   #----------------------------------------------------------------------
   # generate Trinity PBS job script
   #----------------------------------------------------------------------
-  ( $trinity_PBS_script, $transdecoder_PBS_script ) = writeTrinity_Transdecoder_PBS( $logfile, $fwd_nuc_merged, $rev_nuc_merged, $fwd_trimmed_filtered, $rev_trimmed_filtered, $fwd_ssu_merged, $rev_ssu_merged, $fwd_lsu_merged, $rev_lsu_merged, $fwd_organelle_merged, $rev_organelle_merged, $ID, $genus, $species, $cultureID, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils, $busco_executable, $cdhit_executable );
+  ( $trinity_PBS_script, $transdecoder_PBS_script ) = writeTrinity_Transdecoder_PBS( $logfile, $fwd_nuc_merged, $rev_nuc_merged, $fwd_trimmed_filtered, $rev_trimmed_filtered, $fwd_diatom_ssu, $rev_diatom_ssu, $fwd_tol_ssu, $rev_tol_ssu, $fwd_lsu, $rev_lsu, $fwd_organelle, $rev_organelle, $ID, $genus, $species, $cultureID, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils, $busco_executable, $cdhit_executable );
 
   
   #----------------------------------------------------------------------
@@ -235,14 +238,14 @@ if( $PBS_ONLY ){
   
   # remove Rcorrector, Trimmomatic, and Bowtie2 UniVec output files - don't need these
   print LOGFILE "Deleting intermediate files:\n";
-  print LOGFILE "    $fwd_corrected\, $rev_corrected\, $fwd_trimmed\, $rev_trimmed\, $fwd_noVec\, $rev_noVec\, $fwd_noVec_noSSU\, $rev_noVec_noSSU\, $fwd_noVec_noRNA\, $rev_noVec_noRNA\, $fwd_organelle\, $rev_organelle\n\n";
-  system( "rm $fwd_corrected $rev_corrected $fwd_trimmed $rev_trimmed $fwd_noVec $rev_noVec $fwd_noVec_noSSU $rev_noVec_noSSU $fwd_noVec_noRNA $rev_noVec_noRNA $fwd_organelle $rev_organelle" );
+  print LOGFILE "    $fwd_corrected\, $rev_corrected\, $fwd_noVec\, $rev_noVec\, $fwd_noVec_noSSU\, $rev_noVec_noSSU\, $fwd_noVec_noRNA\, $rev_noVec_noRNA\n\n";
+  system( "rm $fwd_corrected $rev_corrected $fwd_noVec $rev_noVec $fwd_noVec_noSSU $rev_noVec_noSSU $fwd_noVec_noRNA $rev_noVec_noRNA" );
 
   # move files to output directory created for this species/RNA_ID
   print LOGFILE "Moving log file; Trinity PBS script; nuclear, organelle, and rRNA reads to:\n";
   print LOGFILE "    $parent/$directory_id/\n\n";
 
-  system( "mv $logfile $trinity_PBS_script $transdecoder_PBS_script $fwd_nuc_merged $rev_nuc_merged $fwd_trimmed_filtered $rev_trimmed_filtered $fwd_ssu $rev_ssu $fwd_lsu $rev_lsu $fwd_ssu_merged $rev_ssu_merged $fwd_lsu_merged $rev_lsu_merged $fwd_organelle_merged $rev_organelle_merged $ID\_rnaseq2clean_filter.pbs $parent/$directory_id/" );
+  system( "mv $logfile $trinity_PBS_script $transdecoder_PBS_script $fwd_trimmed $rev_trimmed $fwd_nuc_merged $rev_nuc_merged $fwd_trimmed_filtered $rev_trimmed_filtered $fwd_diatom_ssu $rev_diatom_ssu $fwd_tol_ssu $rev_tol_ssu $fwd_lsu $rev_lsu $fwd_organelle $rev_organelle $ID\_rnaseq_clean_filter.pbs $parent/$directory_id/" );
   
   # create shell script to:
   # (1) remove processed read files (can recreate these), (2) rsync output to storage07, (3) delete output directory from scratch
@@ -271,12 +274,21 @@ sub sql_fetch{
   my $ds     = "DBI:mysql:$DB:$HOST";
   my $user   = 'aja';
   my $passwd = 'aja123';
+
+# my $HOST      = 'hpceq';          # the MySQL server on UARK RAZOR cluster
+# my $DB        = 'transcriptome';  # MySQL datbase
+# my $TABLE     = 'RNA_Book';       # table within MySQL database
   
-  # connect to the MySQL server
-  my $dbh = DBI->connect( $ds, $user, $passwd, {
-	  AutoCommit => 0,
-	  RaiseError => 1,
-	  }) or die $DBI::errstr;
+
+  my $dbh = DBI->connect("DBI:mysql:database=transcriptome;host=hpceq",
+			 "aja", "aja123",
+			{ 'AutoCommit' => 0, 'RaiseError' => 1 });
+
+  exit;
+  # my $dbh = DBI->connect( $ds, $user, $passwd, {
+  # 	  AutoCommit => 0,
+  # 	  RaiseError => 1,
+  # 	  }) or die $DBI::errstr;
 
   my $sth;  # holds the SQL prepare statement
 
@@ -302,7 +314,9 @@ sub sql_fetch{
   # build directory name (e.g., 'R20b_rhizosolenia_setigera_ECT2AJA-026' )
   my $dir_id;
   if( $hash->{Genus} ){
-    $dir_id = $type . $id_num . $suffix . "_" . lcfirst $hash->{Genus} . "_" . lcfirst $hash->{Species} . "_" .  $hash->{Culture_ID};
+    $dir_id = $type . $id_num . $suffix . "_" . lcfirst $hash->{Genus};
+    $hash->{Species} and $dir_id .= "_" . lcfirst $hash->{Species};
+    $dir_id .= "_" .  $hash->{Culture_ID};
   }else{
     $dir_id = $type . $id_num . $suffix . "_" . $hash->{Culture_ID};
   }
@@ -373,7 +387,7 @@ sub run_Trimmomatic{
   my $fwd_out = "$ID\_trimmed_1.fq.gz"; # (fwd)
   my $rev_out = "$ID\_trimmed_2.fq.gz"; # (rev)
 
-  my $trimmomatic_command = "java -jar /share/apps/trimmomatic/Trimmomatic-0.32/trimmomatic-0.32.jar PE $fwd_in $rev_in $fwd_out $ID\_junk\_1.fq.gz $rev_out $ID\_junk_2.fq.gz ILLUMINACLIP:$adapterDB:2:40:15 LEADING:$TRIM_PHRED TRAILING:$TRIM_PHRED SLIDINGWINDOW:$SLIDINGWINDOW MINLEN:$MIN_LEN TOPHRED$PHRED_OUT 2>>$logfile";
+  my $trimmomatic_command = "java -jar /share/apps/trimmomatic/Trimmomatic-0.32/trimmomatic-0.32.jar PE $fwd_in $rev_in $fwd_out $ID\_junk\_1.fq.gz $rev_out $ID\_junk_2.fq.gz ILLUMINACLIP:$adapterDB:2:40:15 LEADING:$TRIM_PHRED TRAILING:$TRIM_PHRED SLIDINGWINDOW:$SLIDINGWINDOW MINLEN:$MIN_LEN AVGQUAL:$AVG_QUAL TOPHRED$PHRED_OUT 2>>$logfile";
 
   open( LOGFILE, ">>", $logfile  ) || die "Can't open $logfile: $!\n";
   print LOGFILE "# ----------------------------------------------------------------------\n";
@@ -467,9 +481,16 @@ sub filter_rRNA{
     return( $fwd_rrna, $rev_rrna );
   }else{
 
-    # bowtie univec command
-    my $bowtie_rrna_cmd = "$bowtie2_executable -x $bowtie2_db -1 $fwd_in -2 $rev_in --phred33 --local --un-conc-gz $unmapped_basename --al-conc-gz $rrna_reads >/dev/null 2>>$logfile";
 
+    # generate appropriate bowtie command
+    my $bowtie_rrna_cmd;
+    if( $rna_type eq "diatom_ssu" ){
+      $bowtie_rrna_cmd = "$bowtie2_executable -x $bowtie2_db -1 $fwd_in -2 $rev_in --phred33 --local --very-sensitive --al-conc-gz $rrna_reads >/dev/null 2>>$logfile";
+    }else{
+      $bowtie_rrna_cmd = "$bowtie2_executable -x $bowtie2_db -1 $fwd_in -2 $rev_in --phred33 --end-to-end --very-sensitive --un-conc-gz $unmapped_basename --al-conc-gz $rrna_reads >/dev/null 2>>$logfile";
+    }
+
+      
     # open log file for printing
     open( LOGFILE, ">>", $logfile  ) || die "Can't open $logfile: $!\n";
     print LOGFILE "# ----------------------------------------------------------------------\n";
@@ -494,7 +515,14 @@ sub filter_rRNA{
     close LOGFILE;
   }
 
-  if( $rna_type eq "lsu" ){
+  if( $rna_type eq "tol_ssu" ){
+    system( "mv $fwd_out $ID\_noVec_noSSU_1.fq.gz" );
+    system( "mv $rev_out $ID\_noVec_noSSU_2.fq.gz" );
+    
+    $fwd_out = "$ID\_noVec_noSSU_1.fq.gz";
+    $rev_out = "$ID\_noVec_noSSU_2.fq.gz";
+
+  }elsif( $rna_type eq "lsu" ){
     system( "mv $fwd_out $ID\_noVec_noRNA_1.fq.gz" );
     system( "mv $rev_out $ID\_noVec_noRNA_2.fq.gz" );
 
@@ -502,7 +530,7 @@ sub filter_rRNA{
     $rev_out = "$ID\_noVec_noRNA_2.fq.gz";
   }
   
-  return( $fwd_out, $rev_out, $fwd_rrna, $rev_rrna );
+  return( $fwd_rrna, $rev_rrna, $fwd_out, $rev_out );
 
 }
 ####################################################################################################
@@ -612,7 +640,7 @@ sub merge_reads_with_BBMerge{
 ####################################################################################################
 sub writeTrinity_Transdecoder_PBS{
 
-  my( $logfile, $fwd_nuc_merged, $rev_nuc_merged, $fwd_nuc_all, $rev_nuc_all, $fwd_ssu, $rev_ssu, $fwd_lsu, $rev_lsu, $fwd_org, $rev_org, $ID, $genus, $species, $cultureID, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils, $busco_executable, $cdhit_executable ) = @_;
+  my( $logfile, $fwd_nuc_merged, $rev_nuc_merged, $fwd_nuc_all, $rev_nuc_all, $fwd_diatom_ssu, $rev_diatom_ssu, $fwd_tol_ssu, $rev_tol_ssu, $fwd_lsu, $rev_lsu, $fwd_org, $rev_org, $ID, $genus, $species, $cultureID, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils, $busco_executable, $cdhit_executable ) = @_;
   
   my $ppn; # number processors
   my $mem; # available memory
@@ -635,6 +663,9 @@ sub writeTrinity_Transdecoder_PBS{
   if( $QUEUE eq 'aja' ){
     $ppn = 16;
     $mem = 32;
+  }elsif( $QUEUE eq 'mem96GB12core' ){
+    $ppn = 12;
+    $mem = 96;
   }elsif( $QUEUE eq 'mem512GB64core' ){
     $ppn = 64;
     $mem = 512;
@@ -675,43 +706,53 @@ sub writeTrinity_Transdecoder_PBS{
   print TRINITY 'module load boost/1.57.0', "\n";
   print TRINITY 'module load perl/5.10.1', "\n";
   print TRINITY 'module load python/3.3.2', "\n";
+  print TRINITY 'module load java/sunjdk_1.8.0', "\n";
   print TRINITY 'module load bowtie', "\n";
   print TRINITY 'module load samtools/0.1.19', "\n";
-  print TRINITY 'module load trinity/2.2.0', "\n";
+  print TRINITY 'module load trinity/2.3.2', "\n";
   print TRINITY 'module load blast/2.2.29+', "\n";
   print TRINITY 'module load hmmer/3.1b2', "\n";
   print TRINITY 'module load augustus/3.2.2', "\n";
   print TRINITY 'module load busco/1.1b1', "\n";
   print TRINITY 'module load cdhit/4.6.5', "\n\n";
 
-  # assemble SSU rRNA reads
+  # assemble diatom SSU rRNA reads
   print TRINITY "# assemble SSU rRNA reads\n";
   if( $STRANDED ){
-    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_ssu --right $rev_ssu --SS_lib_type RF --no_normalize_reads --full_cleanup\n";
+    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_diatom_ssu --right $rev_diatom_ssu --SS_lib_type RF --no_normalize_reads --full_cleanup\n";
   }else{
-    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_ssu --right $rev_ssu --no_normalize_reads --full_cleanup\n";
+    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_diatom_ssu --right $rev_diatom_ssu --no_normalize_reads --full_cleanup\n";
   }
-  print TRINITY "mv $trinity_assembly_file $ID\_SSU_rrna.fa\n\n";
+  print TRINITY "mv $trinity_assembly_file $ID\_ssu_rrna.fa\n\n";
+
+  # assemble TOL SSU rRNA reads
+  print TRINITY "# assemble SSU rRNA reads\n";
+  if( $STRANDED ){
+    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_tol_ssu --right $rev_tol_ssu --SS_lib_type RF --no_normalize_reads --full_cleanup\n";
+  }else{
+    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_tol_ssu --right $rev_tol_ssu --no_normalize_reads --full_cleanup\n";
+  }
+  print TRINITY "mv $trinity_assembly_file $ID\_ssu_rrna.fa\n\n";
 
   # assemble LSU rRNA reads
   print TRINITY "# assemble LSU rRNA reads\n";
   if( $STRANDED ){
     print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_lsu --right $rev_lsu --SS_lib_type RF --no_normalize_reads --full_cleanup\n";
   }else{
-    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_nuc_merged --right $rev_nuc_merged --no_normalize_reads --full_cleanup\n";
+    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_lsu --right $rev_lsu --no_normalize_reads --full_cleanup\n";
   }
-  print TRINITY "mv $trinity_assembly_file $ID\_LSU_rrna.fa\n\n";
+  print TRINITY "mv $trinity_assembly_file $ID\_lsu_rrna.fa\n\n";
 
   # BLAST rRNA assembly to diatom SSU database and record the top hit
   print TRINITY "# BLAST rRNA contigs to diatom SSU database\n";
-  print TRINITY "blastn -query $ID\_SSU_rrna.fa -db $blast_rrna_db -max_target_seqs 5 -max_hsps 1 -num_threads ", $ppn, " -outfmt 6 > $ID\_SSU_hits.blastn\n\n";
+  print TRINITY "blastn -query $ID\_ssu_rrna.fa -db $blast_rrna_db -max_target_seqs 5 -max_hsps 1 -num_threads ", $ppn, " -outfmt 6 > $ID\_ssu_hits.blastn\n\n";
 
   # assemble organelle reads
   print TRINITY "# assemble organelle reads\n";
   if( $STRANDED ){
     print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_ORG --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_org --right $rev_org --SS_lib_type RF --no_normalize_reads --full_cleanup\n";
   }else{
-    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_nuc_merged --right $rev_nuc_merged --no_normalize_reads --full_cleanup\n";
+    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_org --right $rev_org --no_normalize_reads --full_cleanup\n";
   }
   print TRINITY "mv $trinity_assembly_file $ID\_organelle.fa\n\n";
   
@@ -752,7 +793,7 @@ sub writeTrinity_Transdecoder_PBS{
   print TRINITY "# move RSEM output\n";
   print TRINITY "mv $ID\_RSEM/RSEM.*.results .\n";
   print TRINITY "# remove intermediate output files\n";
-  print TRINITY "rm -r *.readcount *.bowtie.* $trinity_assembly_file temp m transrate_results run_$ID\_BUSCO/hmmer_output run_$ID\_BUSCO/translated_proteins $ID\_nuclear.fa.RSEM.* $ID\_nuclear.fa.gene_trans_map $ID\_RSEM/\n\n";
+  print TRINITY "rm -r *.bowtie.* $trinity_assembly_file temp m transrate_results run_$ID\_BUSCO/hmmer_output run_$ID\_BUSCO/translated_proteins $ID\_nuclear.fa.RSEM.* $ID\_nuclear.fa.gene_trans_map $ID\_RSEM/\n\n";
 
   close TRINITY;
 
@@ -819,7 +860,7 @@ sub writeTrinity_Transdecoder_PBS{
   print LOGFILE "# Trinity version and PBS job script\n";
   print LOGFILE "# ----------------------------------------------------------------------\n\n";
   close LOGFILE;
-  system ( "$trinity_executable --version >> $logfile" );
+  system ( "$trinity_executable --version | grep Trinity >> $logfile" );
   
   # identify Trinity PBS job script
   open( LOGFILE, ">>", $logfile  ) || die "Can't open $logfile: $!\n";
@@ -840,7 +881,7 @@ sub parseArgs{
 
 
    General options
-          --trinity_queue  - job queue ('mem512GB64core' [default], 'mem768GB32core', 'aja', 'random')
+          --trinity_queue  - job queue ('mem96GB12core', 'mem512GB64core' [default], 'mem768GB32core', 'aja', 'random')
           --db             - MySQL database (default: 'transcriptome')
           --table          - MySQL table to read (default: 'RNA_Book')
           --walltime       - walltime for Trinity run (integer [hrs], default: 72)
@@ -850,6 +891,7 @@ sub parseArgs{
    Trimmomatic options
           --window    - Trimmomatic SLIDINGWINDOW parameter specified as <windowSize><requiredQuality> (default: '4:2')
           --min_len   - filter reads shorter than this length threshold (default: 30)
+          --avg_qual  - filter reads with average quality below the specified level (default: 26)
           --phred_in  - input  Phred scale (default: 33)
           --phred_out - output Phred scale (default: 64)
 
@@ -877,6 +919,7 @@ sub parseArgs{
 	 'window=s'     => \$SLIDINGWINDOW,
 	 'trim_phred=s' => \$TRIM_PHRED,
 	 'min_len=s'    => \$MIN_LEN,
+	 'avg_qual=s'   => \$AVG_QUAL,
 	 'phred_out=s'  => \$PHRED_OUT,
 #	 'phred_in=s'   => \$PHRED_IN,
 				 
