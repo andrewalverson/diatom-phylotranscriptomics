@@ -10,18 +10,17 @@ my $SCRIPT_QUEUE  = 'aja'; # queue for Trinity PBS script
 
 # settings for writing Trinity job script within 'rnaseq_clean_filter.pl'
 my $TRINITY_QUEUE  = 'mem512GB64core'; # queue for Trinity PBS script
-my $TRINITY_WALL   = 72;  # walltime for Trinity, which will be written to the Trinity PBS job script
+my $TRINITY_WALL   = 36;  # walltime for Trinity, which will be written to the Trinity PBS job script
 my $MIN_KMER_RNA   = 1;   # for Trinity, --min_kmer_cov parameter (rRNA assembly)
-my $MIN_KMER_ORG   = 1;   # for Trinity, --min_kmer_cov parameter (organelle assembly)
 my $MIN_KMER_NUC   = 1;   # for Trinity, --min_kmer_cov parameter (nuclear assembly)
-my $STRANDED;             # Trinity, --SS_lib_type parameter to specify a stranded library
+my $STRANDED       = 1;   # Trinity, --SS_lib_type parameter to specify a stranded library
 my $NORMALIZE;            # Trinity, --no_normalize_reads parameter (Trinity normalizes reads by default after 21 Sept 2016)
 my $REFERENCE      = 'phaeo';  # Transrate 'reference' parameter, whether to use Phaeo or Thaps as the reference proteome
 
 # settings for running Trimmomatic within 'rnaseq_clean_filter.pl'
 my $SLIDINGWINDOW = '4:2'; # Trimmomatic SLIDINGWINDOW paramter - number of 5' bp to trim
 my $MIN_LEN       = 30;    # Trimmomatic MINLEN parameter - remove reads shorter than this
-my $AVG_QUAL      = 26;    # Trimmomatic AVGQUAL parameter - drop the read if the average quality is below the specified level
+my $AVG_QUAL      = 28;    # Trimmomatic AVGQUAL parameter - drop the read if the average quality is below the specified level
 my $PHRED_OUT     = 64;    # Trimmomatic TOPHRED parameter
 
 parseArgs();
@@ -93,7 +92,7 @@ print PBS 'module load samtools/0.1.19', "\n";
 print PBS "module load bbmap\n\n";
 
 print PBS "/home/aja/local/src/scripts/rnaseq/rnaseq_clean_filter.pl $type$ID$suffix --wall=$TRINITY_WALL --trinity_queue=$TRINITY_QUEUE ", '\\', "\n",
-          "          --min_kmer_rna=$MIN_KMER_RNA --min_kmer_org=$MIN_KMER_ORG --min_kmer_nuc=$MIN_KMER_NUC $STRANDED $NORMALIZE", ' \\', "\n",
+          "          --min_kmer_rna=$MIN_KMER_RNA --min_kmer_nuc=$MIN_KMER_NUC $STRANDED $NORMALIZE", ' \\', "\n",
           "          --window=$SLIDINGWINDOW --min_len=$MIN_LEN --reference=$REFERENCE --phred_out=$PHRED_OUT --avg_qual=$AVG_QUAL\n";
 
 close PBS;
@@ -114,16 +113,15 @@ sub parseArgs{
    options for running Trimmomatic within 'rnaseq_clean_filter.pl' pipeline
           --window     - Trimmomatic SLIDINGWINDOW parameter specified as <windowSize><requiredQuality> (default: '4:2')
           --min_len    - filter reads shorter than this length threshold (default: 30)
-          --avg_qual   - filter reads with average quality below the specified level (default: 26)
+          --avg_qual  - filter reads with average quality below the specified level (default: 28 [select --avg_qual=none for no avg_qual filter])
           --phred_out  - output Phred scale (default: 64)
 
    options for writing Trinity PBS job script within 'rnaseq_clean_filter.pl' pipeline
-          --trinity_wall  - walltime for Trinity PBS script (integer, default = 72 hrs)
+          --trinity_wall  - walltime for Trinity PBS script (integer, default = 36 hrs)
           --trinity_queue - queue for Trinity PBS script ('mem96GB12core', 'mem512GB64core' [default], 'mem768GB32core', 'random')
           --min_kmer_rna   - Trinity --min_kmer_cov parameter for rRNA assembly (default: 1)
-          --min_kmer_org   - Trinity --min_kmer_cov parameter for organelle assembly (default: 1)
           --min_kmer_nuc   - Trinity --min_kmer_cov parameter for nuclear assembly (default: 1)
-          --stranded       - Trinity --SS_lib_type parameter, set to RF when true (default: false [not stranded])
+          --stranded       - Trinity --SS_lib_type parameter, set to RF when true (default: true [library is stranded])
           --normalize      - Trinity --no_normalize_reads parameter, Trinity normalizes by default (boolean, default: do not normalize)
 
 
@@ -147,7 +145,6 @@ sub parseArgs{
 	 'trinity_wall=i'  => \$TRINITY_WALL,
 	 'trinity_queue=s' => \$TRINITY_QUEUE,
 	 'min_kmer_rna=i'  => \$MIN_KMER_RNA,
-	 'min_kmer_org=i'  => \$MIN_KMER_ORG,
 	 'min_kmer_nuc=i'  => \$MIN_KMER_NUC,
 	 'stranded!'       => \$STRANDED,
 	 'normalize!'      => \$NORMALIZE,
