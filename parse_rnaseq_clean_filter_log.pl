@@ -16,12 +16,12 @@ my $sample_ID;
 my $num_trimmomatic_dropped;
 my $num_raw_reads;
 my $num_corrected_bases;
-my $num_organelle_pairs;
-my $num_rrna_pairs;
 my $num_nuclear_pairs;
 my $num_nuclear_merged;
 my $bbmerge_setting;
-
+my $percent_diatom_LSU;
+my $percent_diatom_SSU;
+my $percent_tol_SSU;
 
 ################ PARSE LOG FILE ################
 while( <LOG>) {
@@ -36,23 +36,20 @@ while( <LOG>) {
       /Pairs:\s+(\d+)/  and $num_nuclear_pairs  = $1;
       /Joined:\s+(\d+)/ and $num_nuclear_merged = $1;
     }
-  }elsif( /BEGIN ORGANELLE BBMERGE/ ){
+  }elsif( /BEGIN BOWTIE2 LSU RRNA/ ){
     while( <LOG> ){
       /^END/ and last;
-      /Pairs:\s+(\d+)/ and $num_organelle_pairs = $1;
+      /([\d\.]+)% overall alignment rate/ and $percent_diatom_LSU = $1
     }
-  }elsif( /BEGIN RRNA BBMERGE/ ){
+  }elsif( /BEGIN BOWTIE2 SSU_TOL RRNA/ ){
     while( <LOG> ){
       /^END/ and last;
-      /Pairs:\s+(\d+)/ and $num_rrna_pairs = $1;
+      /([\d\.]+)% overall alignment rate/ and $percent_tol_SSU = $1
     }
-  }elsif( /BEGIN BOWTIE2 ORGANELLE/ ){
+  }elsif( /BEGIN BOWTIE2 SSU_DIATOM RRNA/ ){
     while( <LOG> ){
       /^END/ and last;
-    }
-  }elsif( /BEGIN BOWTIE2 RRNA/ ){
-    while( <LOG> ){
-      /^END/ and last;
+      /([\d\.]+)% overall alignment rate/ and $percent_diatom_SSU = $1
     }
   }elsif( /BEGIN TRIMMOMATIC/ ){
     while( <LOG> ){
@@ -120,16 +117,11 @@ close TRANSRATE;
 
 ##################### PRINT RESULTS #####################
 
-print join "\t", "sample_ID", "num_reads (F+R)", "num_corrected_bases", "num_dropped_reads", "percent_organelle_reads", "percent_rrna_reads", "num_nuclear_reads", "bbmerge_setting", "percent_merged", "Assembled contigs", "Assembled bases", "Assembly GC", "Contig N50", "Percent good mappings", "Percent Phaeo CRBB", "Transrate score", "BUSCOs (complete+fragmented)", "BUSCOs (percent)", "\n";
+#print join "\t", "sample_ID", "num_reads (F+R)", "num_corrected_bases", "num_dropped_reads", "percent_diatom_LSU", "percent_diatom_SSU", "percent_TOL_SSU", "num_nuclear_read_pairs", "bbmerge_setting", "percent_merged", "Assembled contigs", "Assembled bases", "Assembly GC", "Contig N50", "Percent good mappings", "Percent Phaeo CRBB", "Transrate score", "BUSCOs (complete+fragmented)", "BUSCOs (percent)", "\n";
 
-my $num_raw_reads_commify     = commify($num_raw_reads);
-my $num_nuclear_reads_commify = commify($num_nuclear_pairs*2);
-$num_corrected_bases          = commify($num_corrected_bases);
-$num_bases                    = commify($num_bases);
-$num_contigs                  = commify($num_contigs);
-
-printf "$sample_ID\t$num_raw_reads_commify\t$num_corrected_bases\t$num_trimmomatic_dropped\t%.2f\t%.2f\t", ($num_organelle_pairs*200)/$num_raw_reads, ($num_rrna_pairs*200)/$num_raw_reads;
-print  $num_nuclear_reads_commify, "\t", $bbmerge_setting, "\t";
+printf "$sample_ID\t$num_raw_reads\t$num_corrected_bases\t$num_trimmomatic_dropped\t";
+print $percent_diatom_LSU, "\t", $percent_diatom_SSU, "\t", $percent_tol_SSU, "\t";
+print  $num_nuclear_pairs, "\t", $bbmerge_setting, "\t";
 printf "%.2f\t", ($num_nuclear_merged/$num_nuclear_pairs)*100;
 printf "$num_contigs\t$num_bases\t%.2f\t$contig_N50\t", $assembly_gc;
 printf "%.2f\t%.2f\t%.2f\t", $p_good_mapping*100, $p_refs_with_crbb*100, $transrate_score;
@@ -145,3 +137,5 @@ sub commify {
   $text =~ s/(\d\d\d)(?=\d)(?!\d*\.)/$1,/g;
   return scalar reverse $text
 }
+
+
