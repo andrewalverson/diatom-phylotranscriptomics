@@ -10,7 +10,7 @@ my $SCRIPT_QUEUE  = 'aja'; # queue for Trinity PBS script
 
 # settings for writing Trinity job script within 'rnaseq_clean_filter.pl'
 my $TRINITY_QUEUE  = 'mem512GB64core'; # queue for Trinity PBS script
-my $TRINITY_WALL   = 36;  # walltime for Trinity, which will be written to the Trinity PBS job script
+my $TRINITY_WALL   = 48;  # walltime for Trinity, which will be written to the Trinity PBS job script
 my $MIN_KMER_RNA   = 1;   # for Trinity, --min_kmer_cov parameter (rRNA assembly)
 my $MIN_KMER_NUC   = 1;   # for Trinity, --min_kmer_cov parameter (nuclear assembly)
 my $STRANDED       = 1;   # Trinity, --SS_lib_type parameter to specify a stranded library
@@ -117,7 +117,7 @@ sub parseArgs{
           --phred_out  - output Phred scale (default: 64)
 
    options for writing Trinity PBS job script within 'rnaseq_clean_filter.pl' pipeline
-          --trinity_wall  - walltime for Trinity PBS script (integer, default = 36 hrs)
+          --trinity_wall  - walltime for Trinity PBS script (integer, default = 48 hrs)
           --trinity_queue - queue for Trinity PBS script ('mem96GB12core', 'mem512GB64core' [default], 'mem768GB32core', 'random')
           --min_kmer_rna   - Trinity --min_kmer_cov parameter for rRNA assembly (default: 1)
           --min_kmer_nuc   - Trinity --min_kmer_cov parameter for nuclear assembly (default: 1)
