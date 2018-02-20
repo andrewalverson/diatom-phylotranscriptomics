@@ -4,17 +4,15 @@
 
 use strict;
 use warnings;
+use Getopt::Long;
 use DBI;
 
-$ARGV[0] or die "usage: $0 assembly-directory\n";
-
-my $dir = shift;
-my $log_file = `find $dir -name \"*_clean_filter.log\" -print`;
-
-open( LOG, "$log_file" ) || die "Couldn't open $log_file: $!\n";
-
-my ( $sample_ID, $type, $table );
-my ( $genus, $species );
+my $SAMPLE_TYPE = 'alverson_lab';
+my ( $sample_ID, $table );
+my $type      = "";
+my $genus     = "";
+my $species   = "";
+my $cultureID = "";
 my $num_trimmomatic_dropped = 0;
 my $num_raw_reads = 0;
 my $num_corrected_bases = 0;
@@ -25,52 +23,72 @@ my $percent_diatom_LSU = 0;
 my $percent_diatom_SSU = 0;
 my $percent_tol_SSU = 0;
 
+# read command line options
+parseArgs();
+
+$ARGV[0] or die "usage: $0 assembly-directory\n";
+
+my $dir = shift @ARGV;
+my $log_file = `find $dir -name \"*_clean_filter.log\" -print`;
+
+open( LOG, "$log_file" ) || die "Couldn't open $log_file: $!\n";
+
 ################ PARSE LOG FILE ################
-while( <LOG>) {
-  chomp;
+while( my $line = <LOG>) {
+  chomp $line;
   
-  if( /Sample ID: \A([LR])(\d+)/ ){
-    $type      = $1;
-    $sample_ID = $2;
-
-    $type eq 'L' and $table = 'Library_Book';
-    $type eq 'R' and $table = 'RNA_Book';
-  }
-
-  ( $genus, $species) = sql_fetch( $sample_ID, $table );
-
-  if( /BEGIN NUCLEAR BBMERGE/ ){
+  if( $line =~ /BEGIN NUCLEAR BBMERGE/ ){
     while( <LOG> ){
       /^END/ and last;
       /(v*strict)=t/    and $bbmerge_setting    = $1;
       /Pairs:\s+(\d+)/  and $num_nuclear_pairs  = $1;
       /Joined:\s+(\d+)/ and $num_nuclear_merged = $1;
     }
-  }elsif( /BEGIN BOWTIE2 LSU RRNA/ ){
+  }elsif( $line =~ /BEGIN BOWTIE2 LSU RRNA/ ){
     while( <LOG> ){
       /^END/ and last;
       /([\d\.]+)% overall alignment rate/ and $percent_diatom_LSU = $1
     }
-  }elsif( /BEGIN BOWTIE2 SSU_TOL RRNA/ ){
+  }elsif( $line =~ /BEGIN BOWTIE2 SSU_TOL RRNA/ ){
     while( <LOG> ){
       /^END/ and last;
       /([\d\.]+)% overall alignment rate/ and $percent_tol_SSU = $1
     }
-  }elsif( /BEGIN BOWTIE2 SSU_DIATOM RRNA/ ){
+  }elsif( $line =~ /BEGIN BOWTIE2 SSU_DIATOM RRNA/ ){
     while( <LOG> ){
       /^END/ and last;
       /([\d\.]+)% overall alignment rate/ and $percent_diatom_SSU = $1
     }
-  }elsif( /BEGIN TRIMMOMATIC/ ){
+  }elsif( $line =~ /BEGIN TRIMMOMATIC/ ){
     while( <LOG> ){
       /^END/ and last;
       /Dropped: (\d+)/ and $num_trimmomatic_dropped = $1;
     }
-  }elsif( /BEGIN RCORRECTOR/ ){
+  }elsif( $line =~ /BEGIN RCORRECTOR/ ){
     while( <LOG> ){
       /^END/ and last;
       /^Processed (\d+) reads/ and $num_raw_reads = $1;
       /Corrected (\d+) bases./ and $num_corrected_bases = $1;
+    }
+  }elsif( $line =~ /Sample ID/ ){
+    if( $SAMPLE_TYPE eq 'alverson_lab' ){
+      $line =~ /Sample ID: ([LR])(\d+)/;
+      $type      = $1;
+      $sample_ID = $2;
+      
+      $type eq 'L' and $table = 'Library_Book';
+      $type eq 'R' and $table = 'RNA_Book';
+      
+      ( $genus, $species, $cultureID ) = sql_fetch( $sample_ID, $table );
+    }else{
+      $line =~ /Sample ID: (.*)/ and $sample_ID = $1;
+      my $name;
+      ( $name, $cultureID ) = split( /\./, $sample_ID);
+      ( $genus, $species )  = split( /_/, $name);
+
+      $cultureID or $cultureID = "";
+      $genus     or $genus     = "";
+      $species   or $species   = "";
     }
   }
 }
@@ -84,7 +102,7 @@ my $complete_buscos = 0;
 my $fragmented_buscos = 0;
 my $total_searched_buscos = 0;
 
-open( BUSCO, "$dir/run_$sample_ID\_BUSCO/short_summary_$sample_ID\_BUSCO" ) || die "Couldn't open $dir/run_$sample_ID\_BUSCO/short_summary_$sample_ID\_BUSCO: $!\n";
+open( BUSCO, "$dir/run_$type$sample_ID\_BUSCO/short_summary_$type$sample_ID\_BUSCO" ) || die "Couldn't open $dir/run_$sample_ID\_BUSCO/short_summary_$sample_ID\_BUSCO: $!\n";
 while( <BUSCO> ){
 
   /(\d+)\s+Complete BUSCOs/             and $complete_buscos = $1;
@@ -127,9 +145,9 @@ close TRANSRATE;
 
 ##################### PRINT RESULTS #####################
 
-#print join "\t", "sample_ID", "num_reads (F+R)", "num_corrected_bases", "num_dropped_reads", "percent_diatom_LSU", "percent_diatom_SSU", "percent_TOL_SSU", "num_nuclear_read_pairs", "bbmerge_setting", "percent_merged", "Assembled contigs", "Assembled bases", "Assembly GC", "Contig N50", "Percent good mappings", "Percent Phaeo CRBB", "Transrate score", "BUSCOs (complete+fragmented)", "BUSCOs (percent)", "\n";
+print join "\t", "sample_ID", "genus", "species", "culture_ID", "num_reads (F+R)", "num_corrected_bases", "num_dropped_reads", "percent_diatom_LSU", "percent_diatom_SSU", "percent_TOL_SSU", "num_nuclear_read_pairs", "bbmerge_setting", "percent_merged", "Assembled contigs", "Assembled bases", "Assembly GC", "Contig N50", "Percent good mappings", "Percent Phaeo CRBB", "Transrate score", "BUSCOs (complete+fragmented)", "BUSCOs (percent)", "\n";
 
-print  "$sample_ID\t$genus\t$species\t$num_raw_reads\t$num_corrected_bases\t$num_trimmomatic_dropped\t";
+print  "$type$sample_ID\t$genus\t$species\t$cultureID\t$num_raw_reads\t$num_corrected_bases\t$num_trimmomatic_dropped\t";
 print  $percent_diatom_LSU, "\t", $percent_diatom_SSU, "\t", $percent_tol_SSU, "\t";
 print  $num_nuclear_pairs, "\t", $bbmerge_setting, "\t";
 printf "%.2f\t", ($num_nuclear_merged/$num_nuclear_pairs)*100;
@@ -148,7 +166,6 @@ sub sql_fetch{
   my ($id_num, $table) = @_;
   my $HOST      = 'hpceq';          # the MySQL server on UARK RAZOR cluster
   my $DB        = 'transcriptome';  # MySQL datbase
-  my $TABLE     = 'RNA_Book';       # table within MySQL database
 
   # for connecting to the MySQL server
   my $ds     = "DBI:mysql:$DB:$HOST";
@@ -210,7 +227,24 @@ sub sql_fetch{
 
   # print $dir_id, "\n" and exit;
   
-  return( $hash->{Genus}, $hash->{Species} );
+  return( $hash->{Genus}, $hash->{Species}, $hash->{Culture_ID} );
   
+}
+####################################################################################################
+sub parseArgs{
+
+  my $usage = "\nUsage: $0 <directory> [options]
+
+   Required: directory with log file to parse
+
+   Options
+          --sample_type - ('alverson_lab' [default] or 'other'); alverson_lab: parse L/R number, other: try to parse ID/name\n\n";
+  
+  my $result = GetOptions(
+			  'sample_type=s' => \$SAMPLE_TYPE,
+			 );
+  
+  $ARGV[0] or die $usage;
+
 }
 ####################################################################################################
