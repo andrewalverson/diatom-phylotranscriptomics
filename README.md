@@ -16,5 +16,7 @@
 >This script is set up to run on the [AHPCC](http://hpc.uark.edu/hpc/) and interface with the MySQL databases that store our sample information ; a typical set of commands is listed in `write_rnaseq_clean_filter_jobscript.md`
 
 `filter_crosstalk.py`: use CD-HIT to remove obvious index crosstalk in samples that were multiplexed and sequenced together
+
 `parse_rnaseq_clean_filter_log.pl`: parse `rnaseq_clean_filter.pl` log file and various assembly files for read characteristics and assembly statistics
+
 `pickH_from_rsem.pl`: pick isoform with highest expression level
