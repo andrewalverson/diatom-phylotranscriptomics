@@ -1,8 +1,8 @@
-#Cleaning, filtering, and assembling Illumina RNAseq data with ``rnaseq_clean_filter.pl``
+# Cleaning, filtering, and assembling Illumina RNAseq data with ``rnaseq_clean_filter.pl``
 
-##Cleaning and filtering reads
+## Cleaning and filtering reads
 
-## Notes and Prerequisites
+### Notes and Prerequisites
 - The script `rnaseq_clean_filter.pl` uses _rcorrector_ to perform error correction, then it uses _Trimmomatic_ and _Bowtie2_ to trim reads, remove Illumina adapters, and filter out reads matching known sequencing vectors, diatom rRNA sequences, and contaminant rRNA sequences
 - The script uses _BBMerge_ to merge overlapping reads prior to assembly
 - File names for raw reads **must** be formatted as, for example, `sampleID_1.fq.gz` (fwd) and `sampleID_2.fq.gz` (rev)
@@ -14,7 +14,7 @@
 
 - All analyses are run on the AHPCC's *Razor* cluster
 
-####Create PBS job script for running `rnaseq_clean_filter.pl`
+### Create PBS job script for running `rnaseq_clean_filter.pl`
 
 - Use `write_rnaseq_clean_filter_jobscript.pl` to create a PBS job script for running the cleaning and filtering job, which can take 18--20 hrs for large datasets
 
@@ -28,7 +28,7 @@
 
 - Double-check the PBS script to make sure `rnaseq_clean_filter.pl` has all the options you want
 
-##Clean and filter reads
+## Clean and filter reads
 - The PBS job script just created runs `rnaseq_clean_filter.pl`, which does the following, in order:
 
 1. Trimmomatic
@@ -67,7 +67,6 @@ Output files are clipped and cleaned reads:
 1. Write Trinity PBS job script
 
 
-###Assembling the cleaned and filtered reads
+### Assembling the cleaned and filtered reads
     Run the *.pbs Trinity job script output by ``rnaseq_clean_filter.pl``
 
-> Written with [StackEdit](https://stackedit.io/).
