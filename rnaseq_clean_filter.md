@@ -1,6 +1,6 @@
-# Cleaning, filtering, and assembling Illumina RNAseq data with ``rnaseq_clean_filter.pl``
+## Cleaning, filtering, and assembling Illumina RNAseq data with ``rnaseq_clean_filter.pl``
 
-## Cleaning and filtering reads
+### Cleaning and filtering reads
 
 ### Notes and Prerequisites
 - The script `rnaseq_clean_filter.pl` uses _rcorrector_ to perform error correction, then it uses _Trimmomatic_ and _Bowtie2_ to trim reads, remove Illumina adapters, and filter out reads matching known sequencing vectors, diatom rRNA sequences, and contaminant rRNA sequences
