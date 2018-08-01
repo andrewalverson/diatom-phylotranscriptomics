@@ -12,23 +12,27 @@ parser = argparse.ArgumentParser(description="Summarize ingroup/outgroup members
 
 # add arguments
 parser.add_argument( "ogs", help="OrthoFinder-based orthogroups in the 'Orthogroups.GeneCount.csv' file" )
+parser.add_argument( "out", help="File containing list (one species per row) of outgroup species" )
+parser.add_argument( "req", help="Report statistics for this species (e.g., a required outgroup)" )
 
 args = parser.parse_args()
 
-# list of outgroup taxa
-# outgroups = ['Albugocan','Aphanomycesast','Aureococcusanoph','Blastocystishom','Ectocarpussil','Hyaloperonosporaarab','Nannochloropsisgad','Phytophthoranic','Plasmoparahal','Pythiumiway','Saprolegniapara']
-outgroups = ['Albugo_candida_genome','Aphanomyces_astaci_genome','Aureococcus_anophagefferens_genome','Blastocystis_hominis_genome','Ectocarpus_siliculosus_genome','Hyaloperonospora_arabidopsidis_genome','Nannochloropsis_gaditana_genome','Phytophthora_nicotianae_genome','Plasmopara_halstedii_genome','Pythium_iwayamai_genome','Saprolegnia_parasitica_genome']
+# list containing names of outgroup taxa
+outgroups = []
 
-# prefix/taxon name for Bolidomonas
-bolido = 'Bolidomonas_pacifica_CCMP1866'
+# get list of outgroup taxa
+with open(args.out, 'r') as outgroup_file:
+	for line in outgroup_file:
+		line = line.rstrip()
+		outgroups.append(line)
 
 # total number of outgroups
-num_outgroups = len(outgroups) + 1;
+num_outgroups = len(outgroups)
 # print("num_outgroups:", num_outgroups)
 
 # print header line
 s = "\t"
-print(s.join(['Orthogroup', 'Unique_diatoms', 'Unique_outgroups', 'Total_species', 'Diatom_occupancy', 'Taxon_occupancy', 'Bolidomonas_count', 'Outgroup_count', 'Diatom_count', 'Total_gene_count', 'NumTaxGT100copies', 'NumTaxGT500copies', 'NumTaxGT1000copies' ]))
+print(s.join(['Orthogroup', 'Unique_diatoms', 'Unique_outgroups', 'Total_species', 'Diatom_occupancy', 'Taxon_occupancy', args.req, 'Outgroup_count', 'Diatom_count', 'Total_gene_count', 'NumTaxGT100copies', 'NumTaxGT500copies', 'NumTaxGT1000copies' ]))
 
 # dictionary to hold column numbers of outgroup taxa; key = index, value = taxon name
 outgroup_indices = {}
@@ -38,6 +42,7 @@ with open(args.ogs, 'r') as orthogroups:
 
 	# loop over each line in the file: first line = taxon IDs, following lines = orthogroups
 	for line in orthogroups:
+		line = line.rstrip()
 
 		# header line begsin with a tab
 		if re.search("^\t", line):
@@ -47,16 +52,17 @@ with open(args.ogs, 'r') as orthogroups:
 			# subtract one to account for the "Total" column
 			num_taxa = len(taxa) - 1
 			# print("num_taxa:", num_taxa)			
+
 			# get column numbers for outgroup taxa
 			for i in outgroups:
 				o = taxa.index(i) + 1  # adding +1 because the column/index for each species is one greater in the orthogroup lines -- want those to be identical
 				outgroup_indices[o] = i
 			
-			# get column number for Bolidomonas
-			p = taxa.index(bolido) + 1  # adding +1 because the column/index for each species is one greater in the orthogroup lines -- want those to be identical
-			outgroup_indices[p] = bolido
+			# get column number for required outgroup/special taxon (args.req)
+			p = taxa.index(args.req) + 1  # adding +1 because the column/index for each species is one greater in the orthogroup lines -- want those to be identical
+			outgroup_indices[p] = args.req
 
-			# print(taxa.index(bolido), outgroup_indices[taxa.index(bolido)])
+			# print(taxa.index(args.req), outgroup_indices[taxa.index(args.req)])
 			# for num, name in outgroup_indices.items():
 			# 	print(name, "\t", num)
 
@@ -66,13 +72,13 @@ with open(args.ogs, 'r') as orthogroups:
 			# dictionary to hold number of copies per species per orthogroup; key = taxon number, value = num copies in this orthogroup
 			copy_number_per_species = {}
 			
-			# for keeping counts of taxa per orthogroup
+			# for storing counts of number of taxa and genes per orthogroup
 			diatom_unique   = 0 # number of unique diatom species in this orthogroup
 			diatom_total    = 0 # total number of diatom sequences in this orthogroup
 			total_species   = 0 # number of unique species (ingroup + outgroup) in this orthogroup
 			outgroup_unique = 0 # number of unique outgroup species in this orthogroup
 			outgroup_total  = 0 # total number of outgroup sequences in this orthogroup
-			bolido_count    = 0 # total number of Bolidomonas sequences in this orthogroup
+			req_count       = 0 # total number of sequences in this orthogroup for the required outgroup taxon
 			gene_count      = 0 # total number of sequences in this orthogroup (i.e., the orthogroup size)
 
 			# split the line
@@ -81,7 +87,7 @@ with open(args.ogs, 'r') as orthogroups:
 			# loop over all fields in this line, where a field is the gene count for each species
 			for j in range(len(counts)):
 
-				# first index = orthogroup ID; print it
+				# first index = orthogroup ID -- print it
 				if j == 0:
 					print(counts[j], end='\t')
 					continue
@@ -90,12 +96,13 @@ with open(args.ogs, 'r') as orthogroups:
 				elif j == (len(counts)-1):
 					gene_count = counts[j]
 					# print(gene_count)
+
 				# else its the ortho count for some species
 				else:
-					# keep track of total copy count for this taxon
+					# keep track of total copy count for this taxon in copy_number_per_species dictionary
 					copy_number_per_species[j] = int(counts[j])
 
-					# is this index (column number, where each column is a species) in the outgroup_indices dictionary?
+					# is this index (i.e., column number, where each column is a species) in the outgroup_indices dictionary?
 					# i.e., is this an outgroup column?
 					if(j in outgroup_indices):
 
@@ -105,10 +112,10 @@ with open(args.ogs, 'r') as orthogroups:
 							outgroup_total  += int(counts[j])
 							total_species   += 1
 
-						# is this outgroup sequence Bolidomonas?
-						if outgroup_indices[j] == bolido:
-							# record the number of Bolidomonas sequences in this orthogroup
-							bolido_count += int(counts[j])
+						# is this outgroup sequence in the required/special outgroup taxon?
+						if outgroup_indices[j] == args.req:
+							# record the number of sequences in this orthogroup for the required/special taxon (= args.req)
+							req_count += int(counts[j])
 					# not an outgroup, so this is a diatom
 					else:
 						# does this diatom taxon have a sequence in this orthogroup?
@@ -140,8 +147,8 @@ with open(args.ogs, 'r') as orthogroups:
 				print(total_species, end='\t')   # total number of unique species (diatoms + outgroups)
 				print( "%.2f" % (diatom_unique/(num_taxa - num_outgroups)),   end='\t') # taxon occupancy (diatoms)
 				print( "%.2f" % ((diatom_unique + outgroup_unique)/num_taxa), end='\t') # taxon occupancy (total)
-				print(bolido_count,    end='\t') # total number of Bolidomonas sequences
-				print(outgroup_total,  end='\t') # total number of outgroup sequences
+				print(req_count, end='\t') # total number of sequences in the required outgroup taxon (args.req)
+				print(outgroup_total, end='\t') # total number of outgroup sequences
 				print(diatom_total, end='\t') # total number of diatom sequences
 				print(gene_count, end='\t') # total number of sequences in this orthogroup
 				print(gt100, end='\t')  # total number of species with >100  sequences in this orthogroup
