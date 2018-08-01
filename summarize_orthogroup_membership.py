@@ -155,5 +155,3 @@ with open(args.ogs, 'r') as orthogroups:
 				sys.exit()
 
 
-orthogroups.close()
-
