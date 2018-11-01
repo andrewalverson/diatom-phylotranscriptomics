@@ -1,1 +1,8 @@
 old
+add_2_to_fastq_reverse_reads.py
+argparse_example.py
+identify_failed_UPP_alignments.py
+mafft_pbs.py
+upp_pbs.py
+__pycache__/
+.DS_Store
