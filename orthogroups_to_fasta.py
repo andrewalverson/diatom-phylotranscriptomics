@@ -11,8 +11,9 @@ from Bio import SeqIO
 parser = argparse.ArgumentParser(description="Create FASTA files from OrthoFinder's 'Orthogroups.csv' output file; FASTA files are written to the working directory")
 
 # add arguments
-parser.add_argument( "ortho",  help="Path to 'Orthogroups.csv'" )
-parser.add_argument( "fasta",  help="Directory containing FASTA files for all species in the OrthoFinder analysis" )
+parser.add_argument( "ortho", help="'Orthogroups.csv' file" )
+parser.add_argument( "fasta", help="Directory containing FASTA files for all species in the OrthoFinder analysis" )
+parser.add_argument( "-s", "--fasta_suffix", default='fa', help="file suffix for individual FASTA files in the 'fasta' directory (default = 'fa')")
 # parser.add_argument( "outdir", help="Path to output directory" )
 
 args = parser.parse_args()
@@ -37,7 +38,7 @@ fasta_files = os.listdir(args.fasta)
 # loop over all assembly fasta files in the directory, parsing and storing the species name, as gleaned from the filename
 # key = species name (from filename), value = assembly file name for this species
 for fi in fasta_files:
-	filename_re = '(.*)\.fa[sta]*$' # files with a FASTA suffix
+	filename_re = '(.*)\.' + args.fasta_suffix + '$' # files with a FASTA suffix
 	match = re.search(filename_re, fi) # only consider *.fa[sta] files
 	if match:
 		fasta_dictionary[(match.group(1))] = match.group(0)
@@ -93,13 +94,24 @@ with open(args.ortho, 'r') as og:
 
 						# loop over all the genes (in this orthogroup) for this species
 						for paralog in genes_for_this_species:
-							# write the sequence to a file
-							SeqIO.write(assembly_dict[paralog], output_handle, "fasta")
+
+							# check whether the desired sequence is in the file – print to STDOUT if it's not
+							if paralog in assembly_dict:
+								# write the sequence to a file
+								SeqIO.write(assembly_dict[paralog], output_handle, "fasta")
+							else:
+								print(output_filename, paralog)
 
 					# else there's just one sequence for this species, so no comma to split on
 					else:
+						# check whether the desired sequence is in the file – print to STDOUT if it's not
+						if species[j] in assembly_dict:
 						# write the sequence to a file
 							SeqIO.write(assembly_dict[species[j]], output_handle, "fasta")
+						else:
+							print(output_filename, species[j])
+
+
 
 
 			output_handle.close()
