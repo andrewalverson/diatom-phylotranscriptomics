@@ -1,4 +1,4 @@
-#! /share/apps/Python/3.5.2/bin/python3.5
+#! /usr/bin/env python3
 
 import sys
 import os
