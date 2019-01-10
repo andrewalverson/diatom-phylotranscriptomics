@@ -38,6 +38,7 @@ with open(args.fasta, 'r') as fasta_file:
 			id_basename_re = "(.*)\|.*$"
 			match = re.search(id_basename_re, id)
 			id = match.group(1)
+			# print(id)
 
 			# get the length of this ORF
 			b = a[6].split(":")
@@ -74,5 +75,5 @@ sequence_descriptions = list(longest_orfs.values())
 for record in fasta_sequences:
 	if record.description in sequence_descriptions:
 		print(record.format("fasta"), end = '')
-	else:
-		continue
+
+
