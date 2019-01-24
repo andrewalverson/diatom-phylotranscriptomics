@@ -20,12 +20,10 @@ def get_args():
 	return parser.parse_args()
 
 
-
 def get_alignment_length(alignment_path):
 	fasta_sequences  = list(SeqIO.parse(open(alignment_path + args.alignment),'fasta'))
 	alignment_length = len(fasta_sequences[0].seq)
 	return alignment_length
-
 
 
 def parse_trimal(base_filename, alignment_length, trimal_path):
@@ -58,7 +56,6 @@ def parse_trimal(base_filename, alignment_length, trimal_path):
 				continue
 			else:
 				trimmed_columns_list.append(str(i))
-				print
 		return coords_to_ranges(trimmed_columns_list)
 
 
@@ -76,7 +73,7 @@ def coords_to_ranges(coords):
 			page_parts.append("{0}".format(start))
 		else:
 			page_parts.append("{0}-{1}".format(start, end))
-	print(','.join(page_parts))
+	# print(','.join(page_parts))
 	return(','.join(page_parts))
 
 
@@ -139,8 +136,8 @@ def main():
 
 	# set paths to input and output files
 	alignment_path = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10/AA_alignments_correct_headers/'
-	trimal_path    = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10/AA_alignments_trimal/'
-	out_path       = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10/AA_alignments_trimmed/'
+	trimal_path    = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10/AA_alignments_trimal_gappyout/'
+	out_path       = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10/AA_alignments_masked_gappyout/'
 
 	alignment_length = get_alignment_length(alignment_path)
 	trimmed_columns  = parse_trimal(base_filename, alignment_length, trimal_path)
