@@ -15,7 +15,8 @@ parser = argparse.ArgumentParser(description="Parse output of `summarize_orthogr
 # add arguments
 parser.add_argument( "orthogroups_summary", help="output of summarize_orthogroup_membership.py" )
 parser.add_argument( "directory", help="Path to orthogroup FASTA files" )
-parser.add_argument( "--min_diatom_occ", help="Link to orthogroups with diatom taxon occupancy >= proportion <min_diatom_occ>", default=0.1, type=float )
+parser.add_argument( "--min_diatom_occ", "-o", help="Link to orthogroups with diatom taxon occupancy >= proportion <min_diatom_occ>", default=0.1, type=float )
+parser.add_argument( "--max_copy_num", "-n", help="Do not link to very large orthogroups, i.e., ones with >= max_copy_num per species on average", default=1e9, type=int )
 
 args = parser.parse_args()
 
@@ -38,11 +39,22 @@ with open(args.orthogroups_summary, 'r') as orthogroups:
     for line in orthogroups:
         line = line.rstrip()
 
+        num_taxa = 0
+
+        # split on whitespace
         a = line.split()
 
-        if float(a[4]) >= 0.1:
-            link = "ln -s " + args.directory + a[0] + ".fa" + "\n"
-            #print(link)
-            os.system(link)
+        # determine total number of taxa
+        if int(a[5] == 1):
+            num_taxa = a[3]
+
+        if float(a[4]) >= args.min_diatom_occ:
+            if int(a[9])/int(a[3]) < args.max_copy_num:
+                link = "ln -s " + args.directory + a[0] + ".fa" + "\n"
+        
+                print(link, end = '')
+                os.system(link)
+            else:
+                continue
         else:
             continue

@@ -8,10 +8,12 @@ import statistics
 from Bio import SeqIO
 
 # create an ArgumentParser object ('parser') that will hold all the information necessary to parse the command line
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description = "write a PBS job script to run UPP with the '-M' setting")
 
 # add arguments
-parser.add_argument( "fasta", help="Unaligned FASTA file" )
+parser.add_argument( "fasta", help="unaligned FASTA file" )
+parser.add_argument( "-q", "--queue", help="trestles queue, default = aja", default = 'aja' )
+parser.add_argument( "-w", "--wall",  help="walltime", default = '6' )
 
 args = parser.parse_args()
 
@@ -38,15 +40,14 @@ upper_median = int(statistics.median(upper_half_lengths))
 
 ### write UPP PBS script for this dataset ###
 
-# set walltime and number of cpu's
-wall    = 72
-num_cpu = 32
-
 # set input directory
-indir = '/storage/aja/orthofinder/orthogroups/orthogroup_fasta_occupancy_10'
+indir = '/storage/aja/orthofinder/orthogroup_fasta_occupancy_20_no_stops'
 
 # set output directory
-outdir = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10'
+outdir = '/storage/aja/orthofinder/gene_trees_round_1/upp'
+
+# number of cpus
+num_cpu = 8
 
 # parse name of input file in order to set prefix for output file names
 a = args.fasta.split(".")
@@ -54,20 +55,25 @@ prefix = a[0]
 
 # print top of PBS script
 print('#PBS -N', prefix+'.UPP')
-print('#PBS -q q72h32c')
+print('#PBS -q', args.queue)
 print('#PBS -j oe')
 print('#PBS -o',  prefix+'.UPP.$PBS_JOBID')
-print('#PBS -l nodes=1:ppn=32')
-print('#PBS -l walltime=' + str(wall) + ':00:00')
+print('#PBS -l nodes=1:ppn=' + str(num_cpu))
+print('#PBS -l walltime=' + str(args.wall) + ':00:00')
 print()
 
+print('TMPDIR=/scratch/$PBS_JOBID')
 print('cd /scratch/$PBS_JOBID')
 print()
 
 print('# load modules')
-print('module load gcc/7.2.1 python/3.6.0 java/sunjdk_1.8.0 sepp/4.3.5')
+print('module load gcc/7.2.1 java/sunjdk_1.8.0 python/3.7.3-anaconda-razor')
 print()
 
+print('conda init bash')
+print('source activate /home/aja/.conda/envs/sepp')
+
+
+print()
 print('# run UPP')
 print('run_upp.py', '-m amino', '-x', str(num_cpu), '-s', '/'.join([indir, args.fasta]), '-d', outdir, '-o', prefix, '-M', upper_median)
-

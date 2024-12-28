@@ -42,7 +42,7 @@ open( OUT, ">$outfile") || die "Couldn't open $outfile: $!\n";
 open( FASTA, "$infile" ) || die "Couldn't open $infile: $!\n";
 while( my $line = <FASTA>){
   if( $line =~ /^>/ ){ # FASTA header
-    # transdecoder output - need to include the "m.\d+" translation ID or there will be redundant FASTA headers in the output
+    # transdecoder output - need to include the "m.\d+" translation ID
     if( $line =~ /(TRINITY_DN\d+_c\d+_g\d+_i\d+)\|(m.\d+)/ ){
       $trinity_contig = "$1\_$2";
     # CroCo output
@@ -66,8 +66,8 @@ close OUT;
 sub sql_fetch{
 
   my ( $sample_type, $sample_num ) = @_;
-  my $HOST      = 'hpceq';          # the MySQL server on UARK RAZOR cluster
-  my $DB        = 'transcriptome';  # MySQL datbase
+  my $HOST      = 'hpceq';  # the MySQL server on UARK RAZOR cluster
+  my $DB        = 'dbaja';  # MySQL datbase
   my $table;
 
   # for connecting to the MySQL server
@@ -75,7 +75,7 @@ sub sql_fetch{
   my $user   = 'aja';
   my $passwd = '123aja321';
 
-  my $dbh = DBI->connect("DBI:mysql:database=transcriptome;host=hpceq",
+  my $dbh = DBI->connect("DBI:mysql:database=db_aja;host=hpceq",
 			 "aja", "$passwd",
 			{ 'AutoCommit' => 0, 'RaiseError' => 1 }) or die $DBI::errstr;
 

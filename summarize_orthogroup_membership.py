@@ -23,8 +23,12 @@ outgroups = []
 # get list of outgroup taxa
 with open(args.out, 'r') as outgroup_file:
 	for line in outgroup_file:
-		line = line.rstrip()
-		outgroups.append(line)
+		# skip blank lines
+		if not line.rstrip():
+			continue
+		else:
+			line = line.rstrip()
+			outgroups.append(line)
 
 # total number of outgroups
 num_outgroups = len(outgroups)
@@ -45,7 +49,7 @@ with open(args.ogs, 'r') as orthogroups:
 		line = line.rstrip()
 
 		# header line begsin with a tab
-		if re.search("^\t", line):
+		if re.search("^Orthogroup", line):
 			taxa = line.split()
 
 			# total number of taxa (ingroup _and_ outgroup) in the matrix

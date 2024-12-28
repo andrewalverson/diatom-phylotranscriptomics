@@ -2,7 +2,7 @@
 
 # load required modules
 import argparse
-import os
+import os, sys
 import re
 import statistics
 import collections
@@ -11,7 +11,7 @@ from Bio import SeqIO
 
 def get_args():
 	# create an ArgumentParser object ('parser') that will hold all the information necessary to parse the command line
-	parser = argparse.ArgumentParser(description="This script makes a global list of masked sites (from UPP) and trimmed sites (from trimal) to make a global list of sites to trim from an alignment")
+	parser = argparse.ArgumentParser(description="This script makes a global list of masked sites (from UPP) and trimmed sites (from trimal) to trim from an alignment")
 
 	# add arguments
 	parser.add_argument( "alignment", help="original FASTA alignment" )
@@ -21,7 +21,8 @@ def get_args():
 
 
 def get_alignment_length(alignment_path):
-	fasta_sequences  = list(SeqIO.parse(open(alignment_path + args.alignment),'fasta'))
+	# fasta_sequences  = list(SeqIO.parse(open(alignment_path + args.alignment),'fasta'))
+	fasta_sequences  = list(SeqIO.parse(open(args.alignment),'fasta'))
 	alignment_length = len(fasta_sequences[0].seq)
 	return alignment_length
 
@@ -29,11 +30,13 @@ def get_alignment_length(alignment_path):
 def parse_trimal(base_filename, alignment_length, trimal_path):
 
 	# name of trimal column mapping file
-	trimal = base_filename + '_alignment.sites'
+	# trimal = base_filename + '_alignment.sites'
+	trimal = base_filename + '_trimal_gt0.1.sites'
 
-	if os.path.exists(trimal_path + trimal):
+	if os.path.exists(trimal):
 
-		with open(trimal_path + trimal, 'r') as trimal_mapping:
+		# with open(trimal_path + trimal, 'r') as trimal_mapping:
+		with open(trimal, 'r') as trimal_mapping:
 			untrimmed_columns = trimal_mapping.read()
 			untrimmed_columns = untrimmed_columns.rstrip()
 
@@ -57,6 +60,8 @@ def parse_trimal(base_filename, alignment_length, trimal_path):
 			else:
 				trimmed_columns_list.append(str(i))
 		return coords_to_ranges(trimmed_columns_list)
+	else:
+		sys.exit()
 
 
 def coords_to_ranges(coords):
@@ -80,20 +85,25 @@ def coords_to_ranges(coords):
 def parse_upp_masked_columns(base_filename, alignment_path):
 
 	# path to alignments and masked sites
-	alignment_path = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10/AA_alignments_correct_headers/'
+	# alignment_path = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10/AA_alignments_correct_headers/'  # round 1
+	# alignment_path   = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10_round2/UPP_M_setting/'           # round 2
 	
 	upp_masked = base_filename + '_insertion_columns.txt'
 
-	if os.path.exists(alignment_path + upp_masked):
+	# if os.path.exists(alignment_path + upp_masked):
+	if os.path.exists(upp_masked):
 
+		# with open(alignment_path + upp_masked, 'r') as masked:
 		with open(upp_masked, 'r') as masked:
 			masked_columns = masked.read()
 		
 		# return comma separated list of columns masked by UPP
 		return(masked_columns.rstrip())
+	else:
+		sys.exit()
 
 
-def write_PBS(base_filename, trimmed_columns, masked_columns, alignment_path, out_path):
+def print_command(base_filename, trimmed_columns, masked_columns, alignment_path, out_path):
 
 	# compile trimmed_columns string, accounting for possibility that one or both of masked_columns and trimmed_columns might be empty
 	if masked_columns:
@@ -108,41 +118,54 @@ def write_PBS(base_filename, trimmed_columns, masked_columns, alignment_path, ou
 			selectcols = ''
 
 	# set walltime and number of cpu's
-	wall    = '06'
-	num_cpu = '1'
+	# wall    = '06'
+	# num_cpu = '1'
 
 	# print top of PBS script
-	print('#PBS -N', base_filename+'.trimal-AA')
-	print('#PBS -q q06h32c')
-	print('#PBS -j oe')
-	print('#PBS -o',  base_filename+'.trimal-AA.$PBS_JOBID')
-	print('#PBS -l nodes=1:ppn=' + num_cpu)
-	print('#PBS -l walltime=' + wall + ':00:00')
-	print()
+	# print('#PBS -N', base_filename+'.trimal-AA')
+	# print('#PBS -q q06h32c')
+	# print('#PBS -j oe')
+	# print('#PBS -o',  base_filename+'.trimal-AA.$PBS_JOBID')
+	# print('#PBS -l nodes=1:ppn=' + num_cpu)
+	# print('#PBS -l walltime=' + wall + ':00:00')
+	# print()
 
-	print('cd /scratch/$PBS_JOBID')
-	print()
+	# print('cd $PBS_O_WORKDIR')
+	# print()
 
 	# print trimal command
-	print('# run trimal')
-	print('/share/apps/bioinformatics/trimal/1.4rev22/trimal', '-selectcols', '{ ' + selectcols + ' }', '-keepheader', '-colnumbering', '-in', alignment_path + args.alignment, '-out', out_path + args.alignment, '>', out_path + base_filename + '_trimal.sites', '2>', out_path + base_filename + '_alignment.err')
-
+	# print('# run trimal')
+	# print('/share/apps/bioinformatics/trimal/1.4rev22/trimal', '-selectcols', '{ ' + selectcols + ' }', '-keepheader', '-colnumbering', '-in', alignment_path + args.alignment, '-out', out_path + args.alignment, '>', out_path + base_filename + '_trimal.sites', '2>', out_path + base_filename + '_alignment.err')
+	print('/share/apps/bioinformatics/trimal/1.4rev22/trimal', '-selectcols', '{ ' + selectcols + ' }', '-keepheader', '-colnumbering', '-in', args.alignment, '-out', base_filename + '_trimal_final.fa', '>', base_filename + '_trimal_final.sites', '2>', base_filename + '_trimal_final.err')
 
 
 def main():
 	# parse name of alignment file in order to set the base filename for output files
-	a = args.alignment.split("_")
+	# a = args.alignment.split("_")
+	a = args.alignment.split("_alignment.fasta")
 	base_filename = a[0]
 
-	# set paths to input and output files
-	alignment_path = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10/AA_alignments_correct_headers/'
-	trimal_path    = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10/AA_alignments_trimal_gappyout/'
-	out_path       = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10/AA_alignments_masked_gappyout/'
+	# print(base_filename + '\n')
+
+	# set paths to input and output files (ROUND 1)
+	# alignment_path = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10/AA_alignments_correct_headers/' # round 1
+	# trimal_path    = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10/AA_alignments_trimal_gappyout/' # round 1
+	# out_path       = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10/AA_alignments_masked_gappyout/' # round 1
+
+	# set paths to input and output files (ROUND 2)
+	# alignment_path = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10_round2/AA_alignments_untrimmed/'       # round 2
+	# trimal_path    = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10_round2/AA_alignments_trimal_gappyout/' # round 2
+	# out_path       = '/storage/aja/orthofinder/orthogroups/orthogroup_alignments_occupancy_10_round2/AA_alignments_masked_gappyout/' # round 2
+
+	# set paths to input and output files (ROUND 2)
+	alignment_path = '/storage/aja/orthofinder/gene_trees_round_4_ortholog_selection_and_trees/RT_ortholog_realignments/' # round 4
+	trimal_path    = '/storage/aja/orthofinder/gene_trees_round_4_ortholog_selection_and_trees/RT_ortholog_realignments/' # round 4
+	out_path       = '/storage/aja/orthofinder/gene_trees_round_4_ortholog_selection_and_trees/RT_ortholog_realignments/' # round 4
 
 	alignment_length = get_alignment_length(alignment_path)
 	trimmed_columns  = parse_trimal(base_filename, alignment_length, trimal_path)
 	masked_columns   = parse_upp_masked_columns(base_filename, alignment_path)
-	write_PBS(base_filename, trimmed_columns, masked_columns, alignment_path, out_path)
+	print_command(base_filename, trimmed_columns, masked_columns, alignment_path, out_path)
 
 
 # get the command-line arguments

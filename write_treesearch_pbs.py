@@ -61,7 +61,8 @@ def write_pbs(seq_count):
 	else:
 		job_type = 'fasttree'
 
-	queue_list = ['aja', 'onenode16core', 'mem768GB32core', 'mem768GB32core', 'mem512GB64core', 'mem512GB64core', 'mem512GB64core', 'tiny16core', 'tiny16core', 'med16core', 'med16core', 'med12core']
+	queue_list = ['aja', 'onenode16core', 'tiny16core', 'tiny16core', 'med16core', 'med16core', 'med12core', 'mem768GB32core', 'mem768GB32core', 'mem512GB64core', 'mem512GB64core', 'tiny16core', 'tiny16core', 'med16core', 'med16core', 'med12core']
+	# queue_list = ['aja', 'onenode16core', 'mem768GB32core', 'mem768GB32core', 'mem512GB64core', 'mem512GB64core', 'tiny16core', 'tiny16core', 'med16core', 'med16core', 'med12core', 'mem768GB32core', 'mem768GB32core', 'mem512GB64core', 'mem512GB64core', 'tiny16core', 'tiny16core', 'med16core', 'med16core', 'med12core']
 	queue = random.choice(queue_list)
 	time, num_cpus = get_cpus_time(queue)
 

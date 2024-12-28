@@ -33,14 +33,10 @@ my $REFERENCE     = 'phaeo'; # Transrate 'reference' parameter, whether to use P
 #----------------------------------------------------------------------
 my $parent                = '/scratch/aja/rnaseq';
 my $rcorrector_executable = '/share/apps/bioinformatics/Rcorrector/run_rcorrector.pl';
-my $trinity_executable    = '/share/apps/trinity/trinityrnaseq-2.3.2/Trinity';
 my $trinity_plugins       = '/share/apps/trinity/trinityrnaseq-2.3.2/trinity-plugins';
 my $trinity_utils         = '/share/apps/trinity/trinityrnaseq-2.3.2/util';
 my $transrate_executable  = '/share/apps/transrate/transrate-1.0.1-linux-x86_64/transrate';
 my $parallel_executable   = '/share/apps/parallel/20150822/bin/parallel';
-my $bowtie2_executable    = '/share/apps/bowtie2/bowtie2-2.2.3/bowtie2';
-my $busco_executable      = '/share/apps/bioinformatics/BUSCO_v1.2/BUSCO_v1.2.py';
-my $cdhit_executable      = '/share/apps/bioinformatics/cdhit/v4.6.5/cd-hit';
 my $bowtie_univec_db      = '/storage/aja/bowtie_univec_database/UniVec_Core';
 my $bowtie_lsu_db         = '/storage/aja/bowtie_lsu_database/diatom_lsu';
 my $bowtie_ssu_db         = '/storage/aja/bowtie_ssu_database/diatom_ssu';
@@ -56,6 +52,7 @@ my $copy_output_to        = '/storage/aja/rnaseq_assemblies';
 my $copy_output_to2       = 'storage07:/data/data/rnaseq_assemblies';
 my $trinity_PBS_script;      # name of Trinity PBS script
 my $transdecoder_PBS_script; # name of Transdecoder PBS script
+
 
 # read command line options
 parseArgs();
@@ -124,7 +121,7 @@ if( $PBS_ONLY ){
   my( $fwd_nuc_org_merged, $rev_nuc_org_merged ) = merge_reads_with_BBMerge( $ID, $fwd_trimmed_filtered, $rev_trimmed_filtered, $logfile, "nuclear" );
 
   # write Trinity PBS job script
-  ( $trinity_PBS_script, $transdecoder_PBS_script ) = writeTrinity_Transdecoder_PBS( $logfile, $fwd_trimmed, $rev_trimmed, $fwd_trimmed_filtered, $rev_trimmed_filtered, $fwd_nuc_org_merged, $rev_nuc_org_merged, $fwd_ssu_diatom, $rev_ssu_diatom, $fwd_ssu_tol, $rev_ssu_tol, $fwd_lsu, $rev_lsu, $ID, $genus, $species, $cultureID, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils, $busco_executable, $cdhit_executable );
+  ( $trinity_PBS_script, $transdecoder_PBS_script ) = writeTrinity_Transdecoder_PBS( $logfile, $fwd_trimmed, $rev_trimmed, $fwd_trimmed_filtered, $rev_trimmed_filtered, $fwd_nuc_org_merged, $rev_nuc_org_merged, $fwd_ssu_diatom, $rev_ssu_diatom, $fwd_ssu_tol, $rev_ssu_tol, $fwd_lsu, $rev_lsu, $ID, $genus, $species, $cultureID, $parent, $directory_id, $trinity_plugins, $trinity_utils );
   
   # exit the program
   exit;
@@ -182,27 +179,27 @@ if( $PBS_ONLY ){
   print LOGFILE "# Bowtie2 version\n";
   print LOGFILE "# ----------------------------------------------------------------------\n\n";
   close LOGFILE;
-  system ( "$bowtie2_executable --version >> $logfile" );
+  system ( "bowtie2 --version >> $logfile" );
   system ( "echo >> $logfile" );
 
 
   #---------------------------------------------------------------------
   # run Bowtie2 to filter out vector contaminants
   #----------------------------------------------------------------------
-  my( $fwd_noVec, $rev_noVec ) = filter_univec( $ID, $logfile, $fwd_trimmed, $rev_trimmed, $bowtie2_executable, $bowtie_univec_db );
+  my( $fwd_noVec, $rev_noVec ) = filter_univec( $ID, $logfile, $fwd_trimmed, $rev_trimmed, $bowtie_univec_db );
 
 
   #----------------------------------------------------------------------
   # run Bowtie2 to filter out SSU and LSU rRNA sequences
   #----------------------------------------------------------------------
   # filter diatom SSU rRNA reads - no need to keep unmapped reads, will make an unmapped SSU reads file based on mapping to the TOL SSU db
-  my( $fwd_ssu_diatom, $rev_ssu_diatom ) = filter_rRNA( $ID, "ssu_diatom", $logfile, $fwd_noVec, $rev_noVec, $bowtie2_executable, $bowtie_ssu_db );
+  my( $fwd_ssu_diatom, $rev_ssu_diatom ) = filter_rRNA( $ID, "ssu_diatom", $logfile, $fwd_noVec, $rev_noVec, $bowtie_ssu_db );
 
   # filter all (TOL) SSU rRNA reads - unmapped read files should be devoid of *ALL* SSU reads (diatoms + everything else)
-  my( $fwd_ssu_tol, $rev_ssu_tol, $fwd_noVec_noSSU, $rev_noVec_noSSU ) = filter_rRNA( $ID, "ssu_tol", $logfile, $fwd_noVec, $rev_noVec, $bowtie2_executable, $bowtie_TOL_ssu_db );
+  my( $fwd_ssu_tol, $rev_ssu_tol, $fwd_noVec_noSSU, $rev_noVec_noSSU ) = filter_rRNA( $ID, "ssu_tol", $logfile, $fwd_noVec, $rev_noVec, $bowtie_TOL_ssu_db );
 
   # filter diatom LSU rRNA reads - unmapped read files should be devoid of all rRNA reads (SSU + most LSU)
-  my( $fwd_lsu, $rev_lsu, $fwd_trimmed_filtered, $rev_trimmed_filtered ) = filter_rRNA( $ID, "lsu", $logfile, $fwd_noVec_noSSU, $rev_noVec_noSSU, $bowtie2_executable, $bowtie_lsu_db );
+  my( $fwd_lsu, $rev_lsu, $fwd_trimmed_filtered, $rev_trimmed_filtered ) = filter_rRNA( $ID, "lsu", $logfile, $fwd_noVec_noSSU, $rev_noVec_noSSU, $bowtie_lsu_db );
 
   
   #----------------------------------------------------------------------
@@ -215,7 +212,7 @@ if( $PBS_ONLY ){
   #----------------------------------------------------------------------
   # generate Trinity PBS job script
   #----------------------------------------------------------------------
-  ( $trinity_PBS_script, $transdecoder_PBS_script ) = writeTrinity_Transdecoder_PBS( $logfile, $fwd_trimmed, $rev_trimmed, $fwd_trimmed_filtered, $rev_trimmed_filtered, $fwd_nuc_org_merged, $rev_nuc_org_merged, $fwd_ssu_diatom, $rev_ssu_diatom, $fwd_ssu_tol, $rev_ssu_tol, $fwd_lsu, $rev_lsu, $ID, $genus, $species, $cultureID, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils, $busco_executable, $cdhit_executable );
+  ( $trinity_PBS_script, $transdecoder_PBS_script ) = writeTrinity_Transdecoder_PBS( $logfile, $fwd_trimmed, $rev_trimmed, $fwd_trimmed_filtered, $rev_trimmed_filtered, $fwd_nuc_org_merged, $rev_nuc_org_merged, $fwd_ssu_diatom, $rev_ssu_diatom, $fwd_ssu_tol, $rev_ssu_tol, $fwd_lsu, $rev_lsu, $ID, $genus, $species, $cultureID, $parent, $directory_id, $trinity_plugins, $trinity_utils );
 
   
   #----------------------------------------------------------------------
@@ -419,7 +416,7 @@ sub filter_univec{
 
   # this subroutine runs Bowtie2 to filter out vector contaminants
 
-  my ( $ID, $logfile, $fwd_in, $rev_in, $bowtie2_executable, $bowtie2_db ) = @_;
+  my ( $ID, $logfile, $fwd_in, $rev_in, $bowtie2_db ) = @_;
 
   # establish base name for unmapped reads output
   my $unmapped_basename = "$ID\_noVec_%.fq.gz";
@@ -427,7 +424,7 @@ sub filter_univec{
   ( my $rev_out = $unmapped_basename ) =~ s/%/2/;
   
   # bowtie univec command
-  my $bowtie_univec_cmd = "$bowtie2_executable -x $bowtie2_db -1 $fwd_in -2 $rev_in --phred33 --local --un-conc-gz $unmapped_basename >/dev/null 2>>$logfile";
+  my $bowtie_univec_cmd = "bowtie2 -x $bowtie2_db -1 $fwd_in -2 $rev_in --phred33 --local --un-conc-gz $unmapped_basename >/dev/null 2>>$logfile";
 
   # open log file for printing
   open( LOGFILE, ">>", $logfile  ) || die "Can't open $logfile: $!\n";
@@ -461,7 +458,7 @@ sub filter_rRNA{
   # this subroutine runs Bowtie2 to filter out rRNA reads
   # note $rna_type is either "ssu_diatom" or "ssu_tol" [tree of life SSU] or "lsu"
 
-  my ( $ID, $rna_type, $logfile, $fwd_in, $rev_in, $bowtie2_executable, $bowtie2_db ) = @_;
+  my ( $ID, $rna_type, $logfile, $fwd_in, $rev_in, $bowtie2_db ) = @_;
   
   # establish base name for unmapped reads output
   my $unmapped_basename = "$ID\_noVec_no_$rna_type\_%.fq.gz";
@@ -484,9 +481,9 @@ sub filter_rRNA{
     # generate appropriate bowtie command
     my $bowtie_rrna_cmd;
     if( $rna_type eq "ssu_diatom" ){
-      $bowtie_rrna_cmd = "$bowtie2_executable -x $bowtie2_db -1 $fwd_in -2 $rev_in --phred33 --end-to-end --very-sensitive --al-conc-gz $rrna_reads >/dev/null 2>>$logfile";
+      $bowtie_rrna_cmd = "bowtie2 -x $bowtie2_db -1 $fwd_in -2 $rev_in --phred33 --end-to-end --very-sensitive --al-conc-gz $rrna_reads >/dev/null 2>>$logfile";
     }else{
-      $bowtie_rrna_cmd = "$bowtie2_executable -x $bowtie2_db -1 $fwd_in -2 $rev_in --phred33 --local --very-sensitive --un-conc-gz $unmapped_basename --al-conc-gz $rrna_reads >/dev/null 2>>$logfile";
+      $bowtie_rrna_cmd = "bowtie2 -x $bowtie2_db -1 $fwd_in -2 $rev_in --phred33 --local --very-sensitive --un-conc-gz $unmapped_basename --al-conc-gz $rrna_reads >/dev/null 2>>$logfile";
     }
 
       
@@ -592,7 +589,7 @@ sub merge_reads_with_BBMerge{
 ####################################################################################################
 sub writeTrinity_Transdecoder_PBS{
 
-  my( $logfile, $fwd_trimmed, $rev_trimmed, $fwd_nuc_org, $rev_nuc_org, $fwd_nuc_org_merged, $rev_nuc_org_merged, $fwd_ssu_diatom, $rev_ssu_diatom, $fwd_ssu_tol, $rev_ssu_tol, $fwd_lsu, $rev_lsu, $ID, $genus, $species, $cultureID, $parent, $directory_id, $trinity_executable, $trinity_plugins, $trinity_utils, $busco_executable, $cdhit_executable ) = @_;
+  my( $logfile, $fwd_trimmed, $rev_trimmed, $fwd_nuc_org, $rev_nuc_org, $fwd_nuc_org_merged, $rev_nuc_org_merged, $fwd_ssu_diatom, $rev_ssu_diatom, $fwd_ssu_tol, $rev_ssu_tol, $fwd_lsu, $rev_lsu, $ID, $genus, $species, $cultureID, $parent, $directory_id, $trinity_plugins, $trinity_utils ) = @_;
 
   my $ppn; # number processors
   my $mem; # available memory
@@ -668,39 +665,40 @@ sub writeTrinity_Transdecoder_PBS{
   print TRINITY 'module load busco/1.1b1', "\n";
   print TRINITY 'module load cdhit/4.6.5', "\n\n";
 
+
   # assemble diatom SSU rRNA reads
   print TRINITY "# assemble diatom SSU rRNA reads\n";
   if( $STRANDED ){
-    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_ssu_diatom --right $rev_ssu_diatom --SS_lib_type RF --no_normalize_reads --full_cleanup\n";
+    print TRINITY "Trinity --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_ssu_diatom --right $rev_ssu_diatom --SS_lib_type RF --no_normalize_reads --full_cleanup\n";
   }else{
-    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_ssu_diatom --right $rev_ssu_diatom --no_normalize_reads --full_cleanup\n";
+    print TRINITY "Trinity --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_ssu_diatom --right $rev_ssu_diatom --no_normalize_reads --full_cleanup\n";
   }
   print TRINITY "mv $trinity_assembly_file $ID\_ssu_diatom_rrna.fa\n\n";
 
   # assemble TOL SSU rRNA reads
   print TRINITY "# assemble TOL SSU rRNA reads\n";
   if( $STRANDED ){
-    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_ssu_tol --right $rev_ssu_tol --SS_lib_type RF --no_normalize_reads --full_cleanup\n";
+    print TRINITY "Trinity --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_ssu_tol --right $rev_ssu_tol --SS_lib_type RF --no_normalize_reads --full_cleanup\n";
   }else{
-    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_ssu_tol --right $rev_ssu_tol --no_normalize_reads --full_cleanup\n";
+    print TRINITY "Trinity --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_ssu_tol --right $rev_ssu_tol --no_normalize_reads --full_cleanup\n";
   }
   print TRINITY "mv $trinity_assembly_file $ID\_ssu_tol_rrna.fa\n\n";
 
   # assemble LSU rRNA reads
   print TRINITY "# assemble LSU rRNA reads\n";
   if( $STRANDED ){
-    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_lsu --right $rev_lsu --SS_lib_type RF --no_normalize_reads --full_cleanup\n";
+    print TRINITY "Trinity --seqType fq --min_kmer_cov $MIN_KMER_RNA --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_lsu --right $rev_lsu --SS_lib_type RF --no_normalize_reads --full_cleanup\n";
   }else{
-    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_lsu --right $rev_lsu --no_normalize_reads --full_cleanup\n";
+    print TRINITY "Trinity --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_lsu --right $rev_lsu --no_normalize_reads --full_cleanup\n";
   }
   print TRINITY "mv $trinity_assembly_file $ID\_lsu_rrna.fa\n\n";
 
   # assemble nuclear reads
   print TRINITY "# assemble nuclear reads\n";
   if( $STRANDED ){
-    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_nuc_org_merged --right $rev_nuc_org_merged --SS_lib_type RF --full_cleanup $NORMALIZE\n\n";
+    print TRINITY "Trinity --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_nuc_org_merged --right $rev_nuc_org_merged --SS_lib_type RF --full_cleanup $NORMALIZE\n\n";
   }else{
-    print TRINITY "$trinity_executable --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_nuc_org_merged --right $rev_nuc_org_merged --full_cleanup $NORMALIZE\n\n";
+    print TRINITY "Trinity --seqType fq --min_kmer_cov $MIN_KMER_NUC --max_memory ", $mem, 'G ', '--CPU ', $ppn, " --left $fwd_nuc_org_merged --right $rev_nuc_org_merged --full_cleanup $NORMALIZE\n\n";
   }
   print TRINITY "mv $trinity_assembly_file $ID\_nuclear.fa\n\n";
   
@@ -753,7 +751,7 @@ sub writeTrinity_Transdecoder_PBS{
 
   # identify number of conserved orthologs with BUSCO
   print TRINITY "# identify number of conserved orthologs with BUSCO\n";
-  print TRINITY "python3 $busco_executable -o $ID\_BUSCO -in $ID\_nuclear.fa -l /storage/aja/busco_dbs/eukaryota -m trans -c ", $ppn, " \n\n";
+  print TRINITY "python3 busco -o $ID\_BUSCO -in $ID\_nuclear.fa -l /storage/aja/busco_dbs/eukaryota -m trans -c ", $ppn, " \n\n";
 
   # move RSEM output
   print TRINITY "# move RSEM output to appropriate directories\n";
@@ -810,7 +808,7 @@ sub writeTrinity_Transdecoder_PBS{
 
   # run CD-HIT to remove redundant contigs
   print TRANSDECODER "# Run CD-HIT to remove redundant/overlapping contigs\n";
-  print TRANSDECODER "$cdhit_executable -i $ID\_nuclear.fa.transdecoder.pep -o $ID\_cd-hit.pep -c 0.99 -n 5 -d 1000 -M 64000 -T 0\n";
+  print TRANSDECODER "cd-hit -i $ID\_nuclear.fa.transdecoder.pep -o $ID\_cd-hit.pep -c 0.99 -n 5 -d 1000 -M 64000 -T 0\n";
   print TRANSDECODER 'rm -r *.clstr ', "$ID\_nuclear.fa.transdecoder_dir $ID\_nuclear.fa.transdecoder.gff3 $ID\_nuclear.fa.transdecoder.bed", ' *.bowtie.* pfam.domtblout uniref.blastp', "\n\n";
 
   # rsync output from razor to /storage/aja/rnaseq_assemblies ($copy_output_to) and storage07:/data/data/rnaseq_assemblies ($copy_output_to2)
@@ -832,7 +830,7 @@ sub writeTrinity_Transdecoder_PBS{
   print LOGFILE "# Trinity version and PBS job script\n";
   print LOGFILE "# ----------------------------------------------------------------------\n\n";
   close LOGFILE;
-  system ( "$trinity_executable --version | grep '^Trinity' >> $logfile" );
+  system ( "Trinity --version | grep '^Trinity' >> $logfile" );
   
   # identify Trinity PBS job script
   open( LOGFILE, ">>", $logfile  ) || die "Can't open $logfile: $!\n";

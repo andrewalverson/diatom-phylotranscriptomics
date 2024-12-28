@@ -28,7 +28,7 @@ def get_cpus_time(queue):
 		time = 6
 	elif queue == 'comp72':
 		num_cpus = 4
-		time = 18
+		time = 72
 	elif queue == 'c1421':
 		num_cpus = 4
 		time = 3600
@@ -64,9 +64,17 @@ def write_slurm(seq_count):
 	else:
 		job_type = 'fasttree'
 
+	'''
 	queue_list = ['comp06', 'comp06', 'comp06', 'comp72', 'comp72', 'comp72', 'himem06', 'himem06', 'himem06', 'himem72', 'himem72', 'himem72', 
-	'tres06', 'tres06', 'tres06', 'tres72', 'tres72', 'tres72', 'c1421', 'c1427']
-	
+	'tres06', 'tres06', 'tres06', 'tres72', 'tres72', 'tres72', 'c1421', 'c1427', 'c1421', 'c1427']
+
+	queue_list = ['comp06', 'tres06', 'comp72', 'tres72', 'comp06', 'tres06', 'comp72', 'tres72', 'himem72', 'himem06', 'c1427']
+	queue_list = ['c1421', 'c1427', 'tres72']
+	'''
+
+	queue_list = ['c1427']
+
+
 	queue = random.choice(queue_list)
 	time, num_cpus = get_cpus_time(queue)
 
@@ -116,7 +124,9 @@ def write_slurm(seq_count):
 		out.write('FastTreeMP -wag -gamma -pseudo -nosupport ' + args.fasta + ' > ' + file_prefix + '.' + job_type + '\n')
 	else:
 		out.write('# run IQTREE' + '\n')
-		out.write('iqtree -s ' + args.fasta + ' -pre ' + file_prefix + ' -nt ' + str(num_cpus) + ' -st AA -nt AUTO -m TEST --runs 1 > ' + job + '.err')
+		# version with '-safe'
+		out.write('iqtree -s ' + args.fasta + ' -pre ' + file_prefix + ' -nt ' + str(num_cpus) + ' -safe -st AA -nt AUTO -m TEST --runs 1 > ' + job + '.err')
+		# out.write('iqtree -s ' + args.fasta + ' -pre ' + file_prefix + ' -nt ' + str(num_cpus) + ' -st AA -nt AUTO -m TEST --runs 1 > ' + job + '.err')
 
 	out.write('\n')
 

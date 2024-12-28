@@ -31,7 +31,7 @@ for record in croco_sequences:
 
 # compare the two sets of sequences
 for trans_record in trans_sequences:
-	match = re.search("([A-Z].*)(_m\.\d+)$", trans_record.id)
+	match = re.search("([A-Z].*)(_m\.\d+)*", trans_record.id)
 	seq_base_name = match.group(1)
 	
 	if seq_base_name in croco_descriptions:

@@ -32,17 +32,20 @@ def get_M_length():
 	    lengths.append(len(record.seq))
 	fasta_sequences.close()
 
-	return(int(numpy.quantile(lengths, 0.75)))
+	return(int(numpy.quantile(lengths, 0.75)), len(lengths))
 
 
 def get_cpus_time(queue):
 
-	if queue == 'comp06':
+	if queue == 'comp01':
+		num_cpus = 4
+		time = 1
+	elif queue == 'comp06':
 		num_cpus = 4
 		time = 6
 	elif queue == 'comp72':
 		num_cpus = 4
-		time = 18
+		time = 72
 	elif queue == 'c1421':
 		num_cpus = 4
 		time = 3600
@@ -75,16 +78,30 @@ def print_slurm():
 	# outdir = '/storage/aja/orthofinder/gene_trees_round_1/upp'
 	outdir = '$SLURM_SUBMIT_DIR'
 
-	# queue_list = ['comp06', 'comp06', 'comp06', 'comp72', 'comp72', 'comp72', 'himem06', 'himem06', 'himem06', 'himem72', 'himem72', 'himem72', 'tres06', 'tres06', 'tres06', 'tres72', 'tres72', 'tres72', 'c1421', 'c1427']
-	
-	queue_list = ['himem72', 'c1421', 'c1427']
+	# get median sequence length and number of sequences in the alignment
+	M_length, num_seqs = get_M_length()
 
-	queue = random.choice(queue_list)
-	time, num_cpus = get_cpus_time(queue)
+	# queue_gt300 = ['comp72', 'comp72', 'comp72', 'himem72', 'himem72', 'himem72', 'tres72', 'tres72', 'tres72']
+	# queue_lt300 = ['comp06', 'comp06', 'comp72', 'comp72', 'comp72', 'himem06', 'himem06', 'himem72', 'himem72', 'himem72', 'tres72', 'tres72', 'tres72']
+	queue_gt300 = ['comp01', 'tres06']
+	queue_lt300 = ['comp01', 'tres06']
+	# queue_list = ['himem72', 'c1421', 'c1427']
+
+	queue, time, num_cpus = True, True, True
+
+	if(int(num_seqs) < 300):
+		queue = random.choice(queue_lt300)
+		time, num_cpus = get_cpus_time(queue)
+	else:
+		queue = random.choice(queue_gt300)
+		time, num_cpus = get_cpus_time(queue)
 
 	# parse name of input file in order to set prefix for output file names
-	a = args.fasta.split(".")
-	prefix = a[0]
+	# had to change this for ortholog files from Yang's RT output
+	# a = args.fasta.split(".")
+	# prefix = a[0]
+
+	prefix = args.fasta[:-3]
 
 	job = prefix + '.upp'
 
@@ -118,9 +135,11 @@ def print_slurm():
 	print('export OMP_NUM_THREADS=' + str(num_cpus))
 	print()
 
+	print('module purge')
 	print('module load gcc/8.3.1  python/3.7.3-anaconda')
 	print('source /share/apps/bin/conda-3.7.3.sh')
 	print('conda activate bioconda3-el7')
+
 	print()
 
 	# need to put blast module after conda activate to override internal version
@@ -141,9 +160,11 @@ def print_slurm():
 	print()
 
 	print('# run UPP')
+	
+
 	# with '-M'
 	if args.median_full_length:
-		M_length = get_M_length()
+
 		print('run_upp.py', '-m amino', '-x', str(num_cpus), '-s', '/scratch/$SLURM_JOB_ID/' + args.fasta, '-d', '$TMPDIR', '-o', prefix, '-M', M_length)
 
 	# with defaults

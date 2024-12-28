@@ -8,11 +8,18 @@ use Getopt::Long;
 
 # read command line options
 parseArgs();
-my $infile = shift @ARGV;
-my($taxon, $strain, $outfile, $header);
+my $infile = $ARGV[0];
+my $source = $ARGV[1];
+my($taxon, $strain, $outfile, $header, @infile_name_parts);
 
-# assemble name of output file
-my @infile_name_parts = split( /_nuclear\.fa\.transdecoder\./, $infile );
+if($source eq 'mmetsp'){
+  # assemble name of output file (MMETSP)
+  @infile_name_parts = split( /_nuclear\.good_transcripts\.short_name\.filtered_transcripts\.largest_cluster_transcripts\.fa\.transdecoder\./, $infile );
+}else{
+  # assemble name of output file (NIES-3581)
+  @infile_name_parts = split( /_nuclear\.largest_cluster_transcripts\.fa\.transdecoder\./, $infile );
+}
+
 my $file_suffix = pop @infile_name_parts;
 if($infile_name_parts[0] =~ /\./){
   ($taxon, $strain) = split /\./, $infile_name_parts[0];
@@ -38,8 +45,10 @@ while( my $line = <FASTA>){
     # transdecoder output - need to include the "m.\d+" translation ID or there will be redundant FASTA headers in the output
     if( $line =~ /(TRINITY_DN\d+_c\d+_g\d+_i\d+)\|(m.\d+)/ ){
       $trinity_contig = "$1\_$2";
+    }elsif( $line =~ /(TRINITY_DN\d+_c\d+_g\d+_i\d+(\.p\d+)*)/ ){
+      $trinity_contig = "$1";
     }else{
-      die "Did not parse Trinity contig id\n";
+      die "Did not parse Trinity contig id\n$line\n";
     }
 
     # print FASTA header
@@ -54,9 +63,11 @@ close OUT;
 ############################################SUBROUTINES#############################################
 sub parseArgs{
 
-  my $usage = "\nUsage: $0 file.fasta [options]
+  my $usage = "\nUsage: $0 file.fasta source
 
    Required: name of FASTA file <file.fasta>
+   Required: source ('mmetsp' or 'nies')
+
    Options: none
 
 ";
@@ -64,7 +75,7 @@ sub parseArgs{
   my $result = GetOptions(
 			 );
   
-  $ARGV[0] or die $usage;
+  $ARGV[1] or die $usage;
 
 }
 ####################################################################################################
