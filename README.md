@@ -1,5 +1,5 @@
 
-## Scripts for processing phylotranscriptomic data
+## Scripts for analyzing phylotranscriptomic data
 
 ### Data QC
 
