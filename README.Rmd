@@ -8,7 +8,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Scripts for analyzing phylotranscriptomic data
+## Scripts for analyzing diatom phylotranscriptomic dataset
 
 ### Data QC
 

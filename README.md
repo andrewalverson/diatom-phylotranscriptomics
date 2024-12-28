@@ -1,5 +1,5 @@
 
-## Scripts for analyzing phylotranscriptomic data
+## Scripts for analyzing diatom phylotranscriptomic dataset
 
 ### Data QC
 
