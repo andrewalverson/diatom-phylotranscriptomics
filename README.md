@@ -76,6 +76,9 @@ Trinity FASTA headers
 
 `count_ortholog_types.py`
 
+`extract_busco_summary_from_batch_outfile.py`: extract key values from
+batch BUSCO output into a csv file for plotting in R
+
 `link_to_orthogroups_by_taxon_occupancy.py`
 
 `standardize_fasta_headers_and_filenames.pl`: standardize FASTA headers

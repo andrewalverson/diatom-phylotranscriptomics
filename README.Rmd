@@ -1,7 +1,7 @@
 ---
 output:
-  github_document: default
   html_document: default
+  github_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -70,6 +70,8 @@ knitr::opts_chunk$set(echo = TRUE)
 `clean_trinity_fasta_header.pl`: remove special characters, etc. from Trinity FASTA headers
 
 `count_ortholog_types.py`
+
+`extract_busco_summary_from_batch_outfile.py`: extract key values from batch BUSCO output into a csv file for plotting in R
 
 `link_to_orthogroups_by_taxon_occupancy.py`
 
