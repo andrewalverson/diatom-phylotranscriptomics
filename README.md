@@ -1,6 +1,16 @@
 
 ## Scripts for analyzing diatom phylotranscriptomic dataset
 
+### R scripts
+
+- `R-scripts/check-monophyly.R`: check gene trees for monophyly of
+  Thalassiosirales and raphid pennates
+
+- `R-scripts/plot-busco-omark.R`: plot BUSCO and OMArk completeness
+
+- `R-scripts/trees-ordination-and-consensus.R`: NMDS ordination of
+  species trees
+
 ### Data QC
 
 `compare_md5sum.pl`: compares two files with pre- and post-download

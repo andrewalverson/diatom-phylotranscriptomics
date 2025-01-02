@@ -1,7 +1,7 @@
 ---
 output:
-  html_document: default
   github_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -9,6 +9,16 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Scripts for analyzing diatom phylotranscriptomic dataset
+
+### R scripts
+
+  - `R-scripts/check-monophyly.R`: check gene trees for monophyly of Thalassiosirales and raphid pennates
+
+  - `R-scripts/plot-busco-omark.R`: plot BUSCO and OMArk completeness
+  
+  - `R-scripts/trees-ordination-and-consensus.R`: NMDS ordination of species trees
+  
+
 
 ### Data QC
 
