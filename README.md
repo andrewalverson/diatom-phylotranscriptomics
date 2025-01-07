@@ -3,13 +3,17 @@
 
 ### R scripts
 
-- `R-scripts/check-monophyly.R`: check gene trees for monophyly of
+- `check-monophyly.R`: check gene trees for monophyly of
   Thalassiosirales and raphid pennates
 
-- `R-scripts/plot-busco-omark.R`: plot BUSCO and OMArk completeness
+- `Densi.mod.R`: implementation of DensiTree-style function to draw a
+  cloud of diversification histories across a set of phylogenetic trees
 
-- `R-scripts/trees-ordination-and-consensus.R`: NMDS ordination of
-  species trees
+- `Part2_plotMultiMisse.R`: plot the DensiTree-style results
+
+- `plot-busco-omark.R`: plot BUSCO and OMArk completeness
+
+- `trees-ordination-and-consensus.R`: NMDS ordination of species trees
 
 ### Data QC
 
